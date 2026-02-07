@@ -1,45 +1,41 @@
 import { saveArticleOffline } from './db';
+import { Article, MessageType, ExtensionMessage } from '../types'; // Импортируем наши правила
 
-chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
-  if (message.type === 'SAVE_ARTICLE') {
-    const article = message.payload;
+chrome.runtime.onMessage.addListener((message: ExtensionMessage, _, sendResponse) => {
+  
+  // Вместо магических строк используем Enum (как switch по Enum в Java)
+  if (message.type === MessageType.SAVE_ARTICLE) {
+    const article: Article = message.payload;
 
+    // Выносим логику в отдельную асинхронную функцию (Self-invoking async function)
     (async () => {
       try {
         const response = await fetch('http://localhost:8080/api/articles', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer mock-jwt-token',
+            'Authorization': 'Bearer mock-jwt-token',
           },
           body: JSON.stringify(article),
         });
 
-        if (!response.ok) {
-          throw new Error('Server error');
-        }
+        if (!response.ok) throw new Error('Server unreachable');
 
         sendResponse({ status: 'success' });
-
       } catch (error) {
-        console.warn('Сервер недоступен, сохраняем локально');
+        console.warn('Сервер недоступен, сохраняем локально через Repository');
 
         await saveArticleOffline({
+          ...article, // Копируем все поля из статьи
           id: crypto.randomUUID(),
-          title: article.title,
-          url: article.url,
-          content: article.content,
           createdAt: Date.now(),
           syncStatus: 'PENDING_SYNC',
         });
 
-        sendResponse({
-          status: 'offline_saved',
-          message: 'Сохранено локально',
-        });
+        sendResponse({ status: 'offline_saved' });
       }
     })();
 
-    return true; // важно для async
+    return true; // Держим канал связи открытым (как асинхронный ответ в Spring)
   }
 });
