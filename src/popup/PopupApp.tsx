@@ -81,13 +81,12 @@ function AuthenticatedView() {
           setLoading(false)
           
           if (response?.status === 'success') {
-            setStatusMsg('✅ Успешно сохранено!')
-            setTimeout(() => setStatusMsg(''), 3000)
-          } else {
-            console.error('Ошибка бэкенда:', response?.message)
-            alert(`Ошибка сервера: ${response?.message || 'Неизвестная ошибка'}`)
-            setStatusMsg('❌ Ошибка сохранения')
-          }
+  setStatusMsg('✅ Успешно сохранено!')
+} else if (response?.status === 'offline_saved') {
+  setStatusMsg('📦 Сохранено оффлайн')
+} else {
+  setStatusMsg('❌ Ошибка сохранения')
+}
         })
       })
     } catch (err: any) {
@@ -99,29 +98,26 @@ function AuthenticatedView() {
 
   return (
     <div className="space-y-3">
-      <div className="p-3 bg-gray-50 rounded-md border border-gray-100">
-        <p className="text-xs text-gray-500 mb-1">Действие</p>
-        <button
-          disabled={loading}
-          className={`w-full flex items-center justify-center gap-2 ${
-            loading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'
-          } text-white py-2 rounded font-medium transition-colors shadow-sm`}
-          onClick={saveArticle}
-        >
-          {loading ? (
-            <>
-              <span className="animate-spin">🌀</span> Сохранение...
-            </>
-          ) : (
-            'Сохранить текущую статью'
-          )}
-        </button>
-        {statusMsg && (
-          <p className="text-[10px] mt-2 text-center text-blue-600 font-medium animate-pulse">
-            {statusMsg}
-          </p>
+      <button
+        disabled={loading}
+        className={`w-full flex items-center justify-center gap-2 ${
+          loading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'
+        } text-white py-2 rounded font-medium transition-colors shadow-sm`}
+        onClick={saveArticle}
+      >
+        {loading ? (
+          <>
+            <span className="animate-spin">🌀</span> Сохранение...
+          </>
+        ) : (
+          'Сохранить текущую статью'
         )}
-      </div>
+      </button>
+      {statusMsg && (
+        <p className="text-[10px] text-center text-blue-600 font-medium animate-pulse">
+          {statusMsg}
+        </p>
+      )}
 
       <button className="w-full border border-gray-300 hover:bg-gray-50 py-2 rounded text-gray-700 transition-colors">
         Открыть библиотеку

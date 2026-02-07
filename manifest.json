@@ -9,12 +9,11 @@
     "service_worker": "src/background/background.ts",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["src/content/content.ts"]
-    }
-  ],
+  "content_scripts": [{
+  "matches": ["https://*/*", "http://*/*"],
+  "run_at": "document_idle",
+  "js": ["src/content/content.ts"]
+  }],
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
     "http://localhost:8080/*"

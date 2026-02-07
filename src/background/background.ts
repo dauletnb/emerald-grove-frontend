@@ -1,43 +1,45 @@
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('Digital Garden installed');
-});
+import { saveArticleOffline } from './db';
 
-// Адрес вашего будущего Spring Boot сервера
-const API_URL = 'http://localhost:8080/api/articles';
-
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
   if (message.type === 'SAVE_ARTICLE') {
-    console.log('Отправка данных на бэкенд:', message.payload);
+    const article = message.payload;
 
-    // Выполняем реальный запрос к Java серверу
-    fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(message.payload), // Передаем данные из фронтенда
-    })
-      .then(async (response) => {
+    (async () => {
+      try {
+        const response = await fetch('http://localhost:8080/api/articles', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer mock-jwt-token',
+          },
+          body: JSON.stringify(article),
+        });
+
         if (!response.ok) {
-          throw new Error(`Ошибка сервера: ${response.status}`);
+          throw new Error('Server error');
         }
-        return response.json();
-      })
-      .then((data) => {
-        // Отправляем успешный ответ обратно в Popup/Content Script
-        sendResponse({ 
-          status: 'success', 
-          data: data 
-        });
-      })
-      .catch((error) => {
-        console.error('Ошибка при сохранении:', error);
-        sendResponse({ 
-          status: 'error', 
-          message: error.message 
-        });
-      });
 
-    return true; // Важно: сообщаем Chrome, что ответ будет асинхронным
+        sendResponse({ status: 'success' });
+
+      } catch (error) {
+        console.warn('Сервер недоступен, сохраняем локально');
+
+        await saveArticleOffline({
+          id: crypto.randomUUID(),
+          title: article.title,
+          url: article.url,
+          content: article.content,
+          createdAt: Date.now(),
+          syncStatus: 'PENDING_SYNC',
+        });
+
+        sendResponse({
+          status: 'offline_saved',
+          message: 'Сохранено локально',
+        });
+      }
+    })();
+
+    return true; // важно для async
   }
 });
