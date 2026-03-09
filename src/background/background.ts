@@ -1,11 +1,11 @@
 import { saveArticleOffline } from './db';
-import { Article, MessageType, ExtensionMessage } from '../types'; // Импортируем наши правила
+import { MessageType, ExtensionMessage } from '../types'; // Импортируем наши правила
 
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, _, sendResponse) => {
   
   // Вместо магических строк используем Enum (как switch по Enum в Java)
   if (message.type === MessageType.SAVE_ARTICLE) {
-    const article: Article = message.payload;
+    const article= message.payload;
 
     // Выносим логику в отдельную асинхронную функцию (Self-invoking async function)
     (async () => {

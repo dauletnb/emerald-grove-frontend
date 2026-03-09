@@ -15,4 +15,12 @@ export default defineConfig({
       port: 5173,
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        popup: 'src/popup/index.html',
+        library: 'src/library/index.html',
+      },
+    },
+  },
 })
