@@ -3,7 +3,7 @@ export interface Article {
   id?: string;
   title: string;
   url: string;
-  content: string;
+  description: string;
   createdAt?: number;
   syncStatus?: 'SYNCED' | 'PENDING_SYNC';
 }
@@ -15,7 +15,13 @@ export enum MessageType {
 }
 
 // Описание того, как выглядит сообщение
-export interface ExtensionMessage {
-  type: MessageType;
-  payload?: any;
-}
+export type GetPageDataMessage = {
+  type: MessageType.GET_PAGE_DATA;
+};
+
+export type SaveArticleMessage = {
+  type: MessageType.SAVE_ARTICLE;
+  payload: Article;
+};
+
+export type ExtensionMessage = GetPageDataMessage | SaveArticleMessage;

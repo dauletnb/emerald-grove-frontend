@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { MessageType } from '../types' // Импортируем Enum для типов сообщений
+import type { Article } from '../types'
 
 export function PopupApp() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -13,7 +15,7 @@ export function PopupApp() {
   return (
     <div className="w-80 p-4 text-sm font-sans bg-white border border-gray-100 shadow-lg">
       <h1 className="text-xl font-bold mb-4 text-green-800 flex items-center gap-2">
-        🌿 Digital Garden
+        🌿 Emerald Groove
       </h1>
 
       {isAuthenticated ? (
@@ -47,6 +49,11 @@ function AuthenticatedView() {
   const [loading, setLoading] = useState(false)
   const [statusMsg, setStatusMsg] = useState('')
 
+  const openLibrary = async () => {
+  const url = chrome.runtime.getURL('src/library/index.html')
+  await chrome.tabs.create({ url })
+}
+
   const saveArticle = async () => {
     setLoading(true)
     setStatusMsg('Сбор данных со страницы...')
@@ -60,7 +67,7 @@ function AuthenticatedView() {
       }
 
       // 2. Запрашиваем данные у контент-скрипта (content.ts)
-      chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_DATA' }, (pageData) => {
+      chrome.tabs.sendMessage(tab.id, { type: MessageType.GET_PAGE_DATA }, (pageData: Article) => {
         
         // ПРОВЕРКА: Если контент-скрипт не ответил или ответил undefined
         if (chrome.runtime.lastError || !pageData) {
@@ -74,19 +81,16 @@ function AuthenticatedView() {
         setStatusMsg('Отправка на бэкенд...')
 
         // 3. Отправляем эти данные в background.ts для fetch-запроса
-        chrome.runtime.sendMessage({ 
-          type: 'SAVE_ARTICLE', 
-          payload: pageData 
-        }, (response) => {
+         chrome.runtime.sendMessage({ type: MessageType.SAVE_ARTICLE, payload: pageData }, (response) => {
           setLoading(false)
           
           if (response?.status === 'success') {
-  setStatusMsg('✅ Успешно сохранено!')
-} else if (response?.status === 'offline_saved') {
-  setStatusMsg('📦 Сохранено оффлайн')
-} else {
-  setStatusMsg('❌ Ошибка сохранения')
-}
+            setStatusMsg('✅ Успешно сохранено!')
+          } else if (response?.status === 'offline_saved') {
+            setStatusMsg('📦 Сохранено оффлайн')
+          } else {
+            setStatusMsg('❌ Ошибка сохранения')
+          }
         })
       })
     } catch (err: any) {
@@ -119,7 +123,10 @@ function AuthenticatedView() {
         </p>
       )}
 
-      <button className="w-full border border-gray-300 hover:bg-gray-50 py-2 rounded text-gray-700 transition-colors">
+      <button 
+        onClick={openLibrary}
+        className="w-full border border-gray-300 hover:bg-gray-50 py-2 rounded text-gray-700 transition-colors"
+      >
         Открыть библиотеку
       </button>
       

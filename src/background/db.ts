@@ -4,7 +4,7 @@ export interface OfflineArticle {
   id: string;
   title: string;
   url: string;
-  content: string;
+  description: string;
   createdAt: number;
   syncStatus: 'PENDING_SYNC';
 }
@@ -24,3 +24,12 @@ export async function saveArticleOffline(article: OfflineArticle) {
   console.log('Article saved to IndexedDB');
 }
 
+export async function getAllArticles(): Promise<OfflineArticle[]> {
+  const db = await dbPromise;
+  return db.getAll('articles');
+}
+
+export async function deleteArticle(id: string): Promise<void> {
+  const db = await dbPromise;
+  await db.delete('articles', id);
+}
