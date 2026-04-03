@@ -1,41 +1,41 @@
-import { saveArticleOffline } from './db';
-import { MessageType, ExtensionMessage } from '../types'; // Импортируем наши правила
+import { syncArticleToServer } from '../shared/api/articles'
+import { saveArticleOffline } from '../shared/repository/db'
+import { MessageType, type ExtensionMessage } from '../shared/types'
 
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, _, sendResponse) => {
-  
-  // Вместо магических строк используем Enum (как switch по Enum в Java)
   if (message.type === MessageType.SAVE_ARTICLE) {
-    const article= message.payload;
+    const article = message.payload
 
-    // Выносим логику в отдельную асинхронную функцию (Self-invoking async function)
-    (async () => {
+    ;(async () => {
+      const articleId = article.id ?? crypto.randomUUID()
+
       try {
-        const response = await fetch('http://localhost:8080/api/articles', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer mock-jwt-token',
-          },
-          body: JSON.stringify(article),
-        });
+        const result = await syncArticleToServer({
+          ...article,
+          id: articleId,
+          notes: article.notes ?? [],
+        })
 
-        if (!response.ok) throw new Error('Server unreachable');
-
-        sendResponse({ status: 'success' });
+        await saveArticleOffline(result.article)
+        sendResponse({ status: result.status })
       } catch (error) {
-        console.warn('Сервер недоступен, сохраняем локально через Repository');
+        console.warn('Server unavailable, saving article locally', error)
 
         await saveArticleOffline({
-          ...article, // Копируем все поля из статьи
-          id: crypto.randomUUID(),
+          id: articleId,
+          title: article.title,
+          url: article.url,
+          description: article.description ?? '',
           createdAt: Date.now(),
+          updatedAt: Date.now(),
           syncStatus: 'PENDING_SYNC',
-        });
+          notes: article.notes ?? [],
+        })
 
-        sendResponse({ status: 'offline_saved' });
+        sendResponse({ status: 'offline_saved' })
       }
-    })();
+    })()
 
-    return true; // Держим канал связи открытым (как асинхронный ответ в Spring)
+    return true
   }
-});
+})
