@@ -22,10 +22,9 @@
     "noFallthroughCasesInSwitch": true,
 
     /* Path aliases */
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@shared/*": ["src/shared/*"]
+      "@/*": ["./src/*"],
+      "@shared/*": ["./src/shared/*"]
     },
 
     /* Chrome Extension types */
