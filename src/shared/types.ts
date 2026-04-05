@@ -42,6 +42,7 @@ export enum SaveStatus {
 
 export interface SaveArticleResponse {
   status: SaveStatus
+  message?: string
 }
 
 export type ExtensionMessage = GetPageDataMessage | SaveArticleMessage

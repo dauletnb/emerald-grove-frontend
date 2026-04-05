@@ -1,5 +1,8 @@
 import { API_BASE_URL } from '@/config'
-import type { Article, ArticleNote, SaveStatus } from '../types'
+import { getExtensionToken } from '../auth/extensionToken'
+import { ApiAuthError } from './auth'
+import { SaveStatus } from '../types'
+import type { Article, ArticleNote } from '../types'
 import type { OfflineArticle } from '../repository/db'
 
 type RemoteArticle = {
@@ -21,13 +24,20 @@ type RemoteArticle = {
 
 type SyncArticleApiResponse = {
   status: 'CREATED' | 'UPDATED'
-  article: RemoteArticle
+  article?: RemoteArticle
+  articleId?: number
 }
 
-function buildHeaders() {
+async function buildHeaders() {
+  const token = await getExtensionToken()
+
+  if (!token) {
+    throw new ApiAuthError('Расширение не подключено к серверу. Сначала сохраните bearer token в popup.', 401)
+  }
+
   return {
     'Content-Type': 'application/json',
-    Authorization: 'Bearer mock-jwt-token',
+    Authorization: `Bearer ${token}`,
   }
 }
 
@@ -59,7 +69,7 @@ export async function syncArticleToServer(article: Article): Promise<{
 
   const response = await fetch(`${API_BASE_URL}/api/articles/sync`, {
     method: 'POST',
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
     body: JSON.stringify({
       externalId,
       url: article.url,
@@ -75,24 +85,45 @@ export async function syncArticleToServer(article: Article): Promise<{
   })
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiAuthError('Сервер отклонил запрос. Проверьте сохраненный токен расширения.', response.status)
+    }
+
     throw new Error(`Sync failed with status ${response.status}`)
   }
 
   const data = (await response.json()) as SyncArticleApiResponse
+  const offlineArticle =
+    data.article != null
+      ? toOfflineArticle(data.article)
+      : {
+          id: externalId,
+          title: article.title,
+          url: article.url,
+          description: article.description ?? '',
+          createdAt: article.createdAt ?? Date.now(),
+          updatedAt: Date.now(),
+          syncStatus: 'SYNCED' as const,
+          notes: article.notes ?? [],
+        }
 
   return {
-    status: data.status === 'CREATED' ? 'success' : 'updated',
-    article: toOfflineArticle(data.article),
+    status: data.status === 'CREATED' ? SaveStatus.SUCCESS : SaveStatus.UPDATED,
+    article: offlineArticle,
   }
 }
 
 export async function fetchArticlesFromServer(): Promise<OfflineArticle[]> {
   const response = await fetch(`${API_BASE_URL}/api/articles`, {
     method: 'GET',
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiAuthError('Сервер отклонил загрузку библиотеки. Проверьте токен расширения.', response.status)
+    }
+
     throw new Error(`Fetch failed with status ${response.status}`)
   }
 
