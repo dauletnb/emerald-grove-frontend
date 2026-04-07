@@ -113,6 +113,39 @@ export async function syncArticleToServer(article: Article): Promise<{
   }
 }
 
+export async function deleteArticleFromServer(articleExternalId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/articles/${encodeURIComponent(articleExternalId)}`, {
+    method: 'DELETE',
+    headers: await buildHeaders(),
+  })
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiAuthError('Сервер отклонил запрос. Проверьте сохраненный токен расширения.', response.status)
+    }
+
+    throw new Error(`Delete article failed with status ${response.status}`)
+  }
+}
+
+export async function deleteNoteFromServer(articleExternalId: string, noteExternalId: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/articles/${encodeURIComponent(articleExternalId)}/notes/${encodeURIComponent(noteExternalId)}`,
+    {
+      method: 'DELETE',
+      headers: await buildHeaders(),
+    },
+  )
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiAuthError('Сервер отклонил запрос. Проверьте сохраненный токен расширения.', response.status)
+    }
+
+    throw new Error(`Delete note failed with status ${response.status}`)
+  }
+}
+
 export async function fetchArticlesFromServer(): Promise<OfflineArticle[]> {
   const response = await fetch(`${API_BASE_URL}/api/articles`, {
     method: 'GET',

@@ -99,6 +99,21 @@ export async function markArticleSyncStatus(
   })
 }
 
+export async function deleteArticleNote(articleId: string, noteId: string): Promise<OfflineArticle> {
+  const article = await getArticleById(articleId)
+
+  if (!article) {
+    throw new Error('Article not found')
+  }
+
+  return saveArticleOffline({
+    ...article,
+    notes: article.notes.filter((note) => note.id !== noteId),
+    syncStatus: 'PENDING_SYNC',
+    updatedAt: Date.now(),
+  })
+}
+
 export async function addArticleNote(
   articleId: string,
   note: { type: NoteType; content: string },
