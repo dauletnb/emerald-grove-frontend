@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { SafeNoteRenderer } from '../components/SafeNoteRenderer'
-import { fetchArticlesFromServer, syncArticleToServer } from '../shared/api/articles'
+import { deleteArticleFromServer, deleteNoteFromServer, fetchArticlesFromServer, syncArticleToServer } from '../shared/api/articles'
 import {
   addArticleNote,
   deleteArticle,
+  deleteArticleNote,
   getAllArticles,
   saveArticleOffline,
   saveArticlesOffline,
@@ -114,6 +115,14 @@ function EmptyNotesState() {
   )
 }
 
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M9 3.75A2.25 2.25 0 0 0 6.75 6v.75H4.5a.75.75 0 0 0 0 1.5h.568l.773 10.07A2.25 2.25 0 0 0 8.084 20.5h7.832a2.25 2.25 0 0 0 2.243-2.18l.773-10.07h.568a.75.75 0 0 0 0-1.5h-2.25V6A2.25 2.25 0 0 0 15 3.75H9ZM8.25 6A.75.75 0 0 1 9 5.25h6a.75.75 0 0 1 .75.75v.75h-7.5V6Zm1.47 4.22a.75.75 0 0 1 .75.72v5.25a.75.75 0 0 1-1.5 0v-5.25a.75.75 0 0 1 .75-.72Zm4.56 0a.75.75 0 0 1 .75.72v5.25a.75.75 0 0 1-1.5 0v-5.25a.75.75 0 0 1 .75-.72Z" />
+    </svg>
+  )
+}
+
 export function LibraryApp() {
   const [articles, setArticles] = useState<OfflineArticle[]>([])
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null)
@@ -121,6 +130,7 @@ export function LibraryApp() {
   const [syncing, setSyncing] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, DraftState>>({})
   const [noteFilter, setNoteFilter] = useState<NoteFilter>('ALL')
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     void loadLibrary()
@@ -145,6 +155,24 @@ export function LibraryApp() {
     () => articles.find((article) => article.id === selectedArticleId) ?? null,
     [articles, selectedArticleId],
   )
+
+  const filteredArticles = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    if (!query) {
+      return articles
+    }
+
+    return articles.filter((article) => article.title.toLowerCase().includes(query))
+  }, [articles, searchQuery])
+
+  useEffect(() => {
+    if (filteredArticles.some((article) => article.id === selectedArticleId)) {
+      return
+    }
+
+    setSelectedArticleId(filteredArticles[0]?.id ?? null)
+  }, [filteredArticles, selectedArticleId])
 
   const selectedNotes = useMemo(() => {
     if (!selectedArticle) {
@@ -191,6 +219,11 @@ export function LibraryApp() {
   async function handleDelete(id: string) {
     await deleteArticle(id)
     setArticles((prev) => prev.filter((article) => article.id !== id))
+    try {
+      await deleteArticleFromServer(id)
+    } catch (error) {
+      console.warn('Failed to delete article from server', error)
+    }
   }
 
   function getDraft(articleId: string): DraftState {
@@ -205,6 +238,17 @@ export function LibraryApp() {
         ...patch,
       },
     }))
+  }
+
+  async function handleDeleteNote(articleId: string, noteId: string) {
+    try {
+      await deleteArticleNote(articleId, noteId)
+      await deleteNoteFromServer(articleId, noteId)
+      await refreshArticles()
+    } catch (error) {
+      console.error('Failed to delete note', error)
+      await refreshArticles()
+    }
   }
 
   async function handleAddNote(articleId: string) {
@@ -246,51 +290,56 @@ export function LibraryApp() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),_transparent_28%),linear-gradient(180deg,#f7fee7_0%,#f8fafc_34%,#eef2ff_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <header className="overflow-hidden rounded-[32px] border border-white/70 bg-white/75 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur xl:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Emerald Grove</p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Library that leads to action</h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-                Articles stay scannable in the library, while questions, ideas, and tasks live in a dedicated reading
-                workspace on the right.
-              </p>
+        <div className="flex flex-col gap-3 rounded-[28px] border border-white/70 bg-white/75 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-sm font-semibold uppercase tracking-[0.24em] text-white">
+              EG
             </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                <span className="font-semibold">{articles.length}</span> saved articles
-              </div>
-              <button
-                onClick={() => void syncLibrary()}
-                disabled={syncing}
-                className={`rounded-2xl px-4 py-3 text-sm font-semibold text-white transition ${
-                  syncing ? 'cursor-wait bg-slate-400' : 'bg-slate-900 hover:bg-slate-800'
-                }`}
-              >
-                {syncing ? 'Syncing...' : 'Sync now'}
-              </button>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Library</p>
+              <p className="text-sm text-slate-500">{articles.length} saved articles</p>
             </div>
           </div>
-        </header>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => void syncLibrary()}
+              disabled={syncing}
+              className={`rounded-2xl px-4 py-3 text-sm font-semibold text-white transition ${
+                syncing ? 'cursor-wait bg-slate-400' : 'bg-slate-900 hover:bg-slate-800'
+              }`}
+            >
+              {syncing ? 'Syncing...' : 'Sync now'}
+            </button>
+          </div>
+        </div>
 
         {articles.length === 0 ? (
           <EmptyArticleState />
         ) : (
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+          <div className="grid gap-6 items-start xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
             <section className="rounded-[32px] border border-white/70 bg-white/80 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur sm:p-5">
               <div className="mb-4 flex flex-col gap-3 border-b border-slate-100 px-2 pb-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Saved articles</h2>
-                  <p className="mt-1 text-sm text-slate-500">Quick scan first. Deep work happens in the article panel.</p>
                 </div>
-                <div className="text-sm text-slate-500">Sorted by recent activity</div>
+                <div className="w-full sm:w-auto sm:min-w-[260px]">
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search by title"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-3">
-                {articles.map((article) => {
+              <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-220px)] pr-1">
+                {filteredArticles.map((article) => {
                   const counts = getNoteCounts(article.notes)
                   const isSelected = article.id === selectedArticleId
+                  const hostname = new URL(article.url).hostname
+                  const faviconLetter = hostname[0]?.toUpperCase() ?? '?'
 
                   return (
                     <article
@@ -303,7 +352,10 @@ export function LibraryApp() {
                     >
                       <div className="flex gap-4">
                         <button className="flex-1 text-left" onClick={() => setSelectedArticleId(article.id)}>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold uppercase text-white">
+                              {faviconLetter}
+                            </span>
                             <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white">
                               {counts.total} notes
                             </span>
@@ -333,17 +385,12 @@ export function LibraryApp() {
                                 <NoteBadge key={option.value} type={option.value} count={counts[option.value]} />
                               ) : null,
                             )}
-                            {counts.total === 0 ? (
-                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
-                                No notes yet
-                              </span>
-                            ) : null}
                           </div>
 
                           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
                             <span>{formatDate(article.createdAt)}</span>
                             <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:block" />
-                            <span>{new URL(article.url).hostname}</span>
+                            <span>{hostname}</span>
                           </div>
                         </button>
 
@@ -359,23 +406,28 @@ export function LibraryApp() {
 
                           <button
                             onClick={() => void handleDelete(article.id)}
-                            className="rounded-full px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+                            className="rounded-full p-2 text-slate-400 opacity-0 transition hover:bg-rose-50 hover:text-rose-500 group-hover:opacity-100"
                             title="Delete article"
                           >
-                            Delete
+                            <TrashIcon className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
                     </article>
                   )
                 })}
+                {filteredArticles.length === 0 ? (
+                  <div className="rounded-[24px] border border-dashed border-slate-200 bg-white/70 px-5 py-10 text-center text-sm text-slate-500">
+                    No articles match this search.
+                  </div>
+                ) : null}
               </div>
             </section>
 
-            <aside className="rounded-[32px] border border-slate-200/80 bg-slate-950 text-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
+            <aside className="sticky top-6 rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
               {selectedArticle ? (
                 <div className="flex h-full flex-col">
-                  <div className="border-b border-white/10 p-6">
+                  <div className="border-b border-slate-100 p-6">
                     <div className="flex flex-wrap gap-2">
                       {noteTypeOptions.map((option) => {
                         const count = getNoteCounts(selectedArticle.notes)[option.value]
@@ -389,25 +441,18 @@ export function LibraryApp() {
                       <SafeNoteRenderer
                         as="p"
                         content={selectedArticle.description}
-                        className="mt-3 text-sm leading-6 text-slate-300"
+                        className="mt-3 text-sm leading-6 text-slate-600"
                       />
                     ) : null}
 
-                    <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-400">
+                    <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-500">
                       <span>{formatDate(selectedArticle.createdAt)}</span>
                       <span className="h-1 w-1 rounded-full bg-slate-600" />
                       <span>{selectedArticle.notes.length} total notes</span>
                     </div>
                   </div>
 
-                  <div className="border-b border-white/10 p-6">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">Notes workspace</p>
-                        <p className="mt-1 text-sm text-slate-400">Questions stay visible, ideas stay reusable, tasks stay actionable.</p>
-                      </div>
-                    </div>
-
+                  <div className="border-b border-slate-100 p-6">
                     <div className="flex flex-wrap gap-2">
                       {noteFilters.map((filter) => (
                         <FilterChip
@@ -421,24 +466,32 @@ export function LibraryApp() {
                     </div>
                   </div>
 
-                  <div className="border-b border-white/10 p-6">
-                    <div className="grid gap-3 sm:grid-cols-[144px_minmax(0,1fr)]">
-                      <select
-                        value={getDraft(selectedArticle.id).type}
-                        onChange={(event) =>
-                          updateDraft(selectedArticle.id, {
-                            type: event.target.value as NoteType,
-                            error: '',
-                          })
-                        }
-                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-400"
-                      >
-                        {noteTypeOptions.map((option) => (
-                          <option key={option.value} value={option.value} className="text-slate-900">
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                  <div className="border-b border-slate-100 p-6">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        {noteTypeOptions.map((option) => {
+                          const active = getDraft(selectedArticle.id).type === option.value
+
+                          return (
+                            <button
+                              key={option.value}
+                              onClick={() =>
+                                updateDraft(selectedArticle.id, {
+                                  type: option.value,
+                                  error: '',
+                                })
+                              }
+                              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                active
+                                  ? 'bg-emerald-400 text-slate-950'
+                                  : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950'
+                              }`}
+                            >
+                              {option.label}
+                            </button>
+                          )
+                        })}
+                      </div>
 
                       <textarea
                         value={getDraft(selectedArticle.id).content}
@@ -451,12 +504,12 @@ export function LibraryApp() {
                         placeholder="Capture the question, implementation idea, or next task while the article is still fresh."
                         rows={4}
                         maxLength={NOTE_CONTENT_MAX_LENGTH}
-                        className="min-h-28 rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-400"
+                        className="min-h-28 w-full rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
                       />
                     </div>
 
                     <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-sm text-rose-300">
+                      <p className="text-sm text-rose-500">
                         {getDraft(selectedArticle.id).error || `${getDraft(selectedArticle.id).content.length}/${NOTE_CONTENT_MAX_LENGTH}`}
                       </p>
                       <button
@@ -475,10 +528,10 @@ export function LibraryApp() {
 
                   <div className="flex-1 p-6">
                     <div className="mb-4 flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-white">
+                      <h3 className="text-lg font-semibold text-slate-950">
                         {noteFilter === 'ALL' ? 'All notes' : `${getNoteTypeMeta(noteFilter).label} notes`}
                       </h3>
-                      <span className="text-sm text-slate-400">{selectedNotes.length} shown</span>
+                      <span className="text-sm text-slate-500">{selectedNotes.length} shown</span>
                     </div>
 
                     {selectedNotes.length === 0 ? (
@@ -486,16 +539,25 @@ export function LibraryApp() {
                     ) : (
                       <div className="space-y-3">
                         {selectedNotes.map((note) => (
-                          <article key={note.id} className="rounded-[24px] border border-white/10 bg-white/5 p-4">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <NoteBadge type={note.type} />
-                              <span className="text-xs text-slate-400">{formatDate(note.createdAt)}</span>
+                          <article key={note.id} className="group rounded-[24px] border border-slate-100 bg-slate-50 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <NoteBadge type={note.type} />
+                                <span className="text-xs text-slate-500">{formatDate(note.createdAt)}</span>
+                              </div>
+                              <button
+                                onClick={() => void handleDeleteNote(selectedArticle.id, note.id)}
+                                className="rounded-full p-1.5 text-slate-500 opacity-0 transition hover:bg-rose-400/10 hover:text-rose-400 group-hover:opacity-100"
+                                title="Delete note"
+                              >
+                                <TrashIcon className="h-3.5 w-3.5" />
+                              </button>
                             </div>
 
                             <SafeNoteRenderer
                               as="p"
                               content={note.content}
-                              className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-100"
+                              className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-950"
                             />
                           </article>
                         ))}

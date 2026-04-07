@@ -6,7 +6,7 @@ import type { Article, SaveArticleResponse } from '../shared/types'
 
 const STATUS_MESSAGES: Record<SaveStatus, string> = {
   [SaveStatus.SUCCESS]: 'Статья успешно сохранена',
-  [SaveStatus.UPDATED]: 'Статья и заметки синхронизированы',
+  [SaveStatus.UPDATED]: '\u0421\u0442\u0430\u0442\u044c\u044f \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442 \u0438 \u0431\u044b\u043b\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430',
   [SaveStatus.OFFLINE_SAVED]: 'Сервер недоступен, статья сохранена локально',
   [SaveStatus.SERVER_ERROR]: 'Сервер вернул ошибку при сохранении',
   [SaveStatus.FAILED]: 'Не удалось сохранить статью',
