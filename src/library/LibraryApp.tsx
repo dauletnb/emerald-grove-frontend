@@ -317,7 +317,7 @@ export function LibraryApp() {
         {articles.length === 0 ? (
           <EmptyArticleState />
         ) : (
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+          <div className="grid gap-6 items-start xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
             <section className="rounded-[32px] border border-white/70 bg-white/80 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur sm:p-5">
               <div className="mb-4 flex flex-col gap-3 border-b border-slate-100 px-2 pb-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -334,7 +334,7 @@ export function LibraryApp() {
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-220px)] pr-1">
                 {filteredArticles.map((article) => {
                   const counts = getNoteCounts(article.notes)
                   const isSelected = article.id === selectedArticleId
@@ -424,7 +424,7 @@ export function LibraryApp() {
               </div>
             </section>
 
-            <aside className="rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+            <aside className="sticky top-6 rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
               {selectedArticle ? (
                 <div className="flex h-full flex-col">
                   <div className="border-b border-slate-100 p-6">
