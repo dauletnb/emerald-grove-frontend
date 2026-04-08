@@ -88,7 +88,7 @@ function NoteBadge({ type, count }: { type: NoteType; count?: number }) {
     <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${meta.badgeClass}`}>
       <span className={`h-2 w-2 rounded-full ${meta.dotClass}`} />
       {meta.label}
-      {typeof count === 'number' ? <span className="text-[11px] opacity-75">{count}</span> : null}
+      {count != null ? <span className="text-[11px] opacity-75">{count}</span> : null}
     </span>
   )
 }
@@ -124,55 +124,84 @@ function TrashIcon({ className }: { className?: string }) {
 }
 
 export function LibraryApp() {
-  const [articles, setArticles] = useState<OfflineArticle[]>([])
+  const [articles, setArticles] = useState<OfflineArticle[] | null>(null)
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, DraftState>>({})
   const [noteFilter, setNoteFilter] = useState<NoteFilter>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
 
-  useEffect(() => {
-    void loadLibrary()
-  }, [])
+  async function refreshArticles() {
+    const data = await getAllArticles()
+    setArticles(data)
+  }
 
   useEffect(() => {
-    if (articles.length === 0) {
-      setSelectedArticleId(null)
-      return
-    }
+    let cancelled = false
 
-    setSelectedArticleId((current) => {
-      if (current && articles.some((article) => article.id === current)) {
-        return current
+    const startLoadingLibrary = async () => {
+      const data = await getAllArticles()
+
+      if (!cancelled) {
+        setArticles(data)
       }
 
-      return articles[0].id
-    })
-  }, [articles])
+      try {
+        const localArticles = await getAllArticles()
 
-  const selectedArticle = useMemo(
-    () => articles.find((article) => article.id === selectedArticleId) ?? null,
-    [articles, selectedArticleId],
-  )
+        for (const article of localArticles.filter((item) => item.syncStatus === 'PENDING_SYNC')) {
+          const synced = await syncArticleToServer(article)
+          await saveArticleOffline(synced.article)
+        }
+
+        const remoteArticles = await fetchArticlesFromServer()
+        await saveArticlesOffline(remoteArticles)
+
+        if (!cancelled) {
+          const refreshedArticles = await getAllArticles()
+          setArticles(refreshedArticles)
+        }
+      } catch (error) {
+        console.warn('Library sync failed', error)
+      }
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void startLoadingLibrary()
+    }, 0)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [])
 
   const filteredArticles = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
+    const loadedArticles = articles ?? []
 
     if (!query) {
-      return articles
+      return loadedArticles
     }
 
-    return articles.filter((article) => article.title.toLowerCase().includes(query))
+    return loadedArticles.filter((article) => article.title.toLowerCase().includes(query))
   }, [articles, searchQuery])
 
-  useEffect(() => {
-    if (filteredArticles.some((article) => article.id === selectedArticleId)) {
-      return
+  const resolvedSelectedArticleId = useMemo(() => {
+    if (filteredArticles.length === 0) {
+      return null
     }
 
-    setSelectedArticleId(filteredArticles[0]?.id ?? null)
+    if (selectedArticleId && filteredArticles.some((article) => article.id === selectedArticleId)) {
+      return selectedArticleId
+    }
+
+    return filteredArticles[0].id
   }, [filteredArticles, selectedArticleId])
+
+  const selectedArticle = useMemo(
+    () => articles?.find((article) => article.id === resolvedSelectedArticleId) ?? null,
+    [articles, resolvedSelectedArticleId],
+  )
 
   const selectedNotes = useMemo(() => {
     if (!selectedArticle) {
@@ -184,41 +213,9 @@ export function LibraryApp() {
       : selectedArticle.notes.filter((note) => note.type === noteFilter)
   }, [noteFilter, selectedArticle])
 
-  async function refreshArticles() {
-    const data = await getAllArticles()
-    setArticles(data)
-  }
-
-  async function loadLibrary() {
-    await refreshArticles()
-    setLoading(false)
-    await syncLibrary()
-  }
-
-  async function syncLibrary() {
-    setSyncing(true)
-
-    try {
-      const localArticles = await getAllArticles()
-
-      for (const article of localArticles.filter((item) => item.syncStatus === 'PENDING_SYNC')) {
-        const synced = await syncArticleToServer(article)
-        await saveArticleOffline(synced.article)
-      }
-
-      const remoteArticles = await fetchArticlesFromServer()
-      await saveArticlesOffline(remoteArticles)
-      await refreshArticles()
-    } catch (error) {
-      console.warn('Library sync failed', error)
-    } finally {
-      setSyncing(false)
-    }
-  }
-
   async function handleDelete(id: string) {
     await deleteArticle(id)
-    setArticles((prev) => prev.filter((article) => article.id !== id))
+    setArticles((prev) => (prev ?? []).filter((article) => article.id !== id))
     try {
       await deleteArticleFromServer(id)
     } catch (error) {
@@ -283,7 +280,7 @@ export function LibraryApp() {
     }
   }
 
-  if (loading) {
+  if (articles === null) {
     return <div className="min-h-screen bg-slate-950 px-6 py-10 text-sm text-white">Loading library...</div>
   }
 
@@ -299,18 +296,6 @@ export function LibraryApp() {
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Library</p>
               <p className="text-sm text-slate-500">{articles.length} saved articles</p>
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => void syncLibrary()}
-              disabled={syncing}
-              className={`rounded-2xl px-4 py-3 text-sm font-semibold text-white transition ${
-                syncing ? 'cursor-wait bg-slate-400' : 'bg-slate-900 hover:bg-slate-800'
-              }`}
-            >
-              {syncing ? 'Syncing...' : 'Sync now'}
-            </button>
           </div>
         </div>
 
@@ -337,7 +322,7 @@ export function LibraryApp() {
               <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-220px)] pr-1">
                 {filteredArticles.map((article) => {
                   const counts = getNoteCounts(article.notes)
-                  const isSelected = article.id === selectedArticleId
+                  const isSelected = article.id === resolvedSelectedArticleId
                   const hostname = new URL(article.url).hostname
                   const faviconLetter = hostname[0]?.toUpperCase() ?? '?'
 
