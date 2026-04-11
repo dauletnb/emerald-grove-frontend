@@ -1,8 +1,8 @@
 import { API_BASE_URL } from '@/config'
-import { getExtensionToken } from '../auth/extensionToken'
-import { ApiAuthError } from './auth'
+import { getAuthSession, clearAuthSession } from '../auth/authSession'
+import { tryRefreshSession, ApiAuthError } from './auth'
 import { SaveStatus } from '../types'
-import type { Article, ArticleNote } from '../types'
+import type { AIResult, AIStatus, Article, ArticleNote } from '../types'
 import type { OfflineArticle } from '../repository/db'
 
 type RemoteArticle = {
@@ -28,17 +28,62 @@ type SyncArticleApiResponse = {
   articleId?: number
 }
 
-async function buildHeaders() {
-  const token = await getExtensionToken()
+/**
+ * Gets the access token, refreshing it if needed.
+ * Throws ApiAuthError if there is no session or the refresh also fails.
+ */
+async function getValidAccessToken(): Promise<string> {
+  const session = await getAuthSession()
 
-  if (!token) {
-    throw new ApiAuthError('Расширение не подключено к серверу. Сначала сохраните bearer token в popup.', 401)
+  if (!session) {
+    throw new ApiAuthError('Not logged in. Please log in from the extension popup.', 401)
   }
 
+  return session.accessToken
+}
+
+/**
+ * Builds headers with the current access token.
+ */
+async function buildHeaders(): Promise<HeadersInit> {
+  const token = await getValidAccessToken()
   return {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
   }
+}
+
+/**
+ * Executes an authenticated fetch. If the server responds with 401,
+ * tries to refresh the access token once and retries the request.
+ * If the refresh also fails, clears the session and throws ApiAuthError.
+ */
+async function authFetch(url: string, options: RequestInit): Promise<Response> {
+  const response = await fetch(url, {
+    ...options,
+    headers: await buildHeaders(),
+  })
+
+  if (response.status === 401) {
+    // Try to refresh the session
+    const newSession = await tryRefreshSession()
+
+    if (!newSession) {
+      await clearAuthSession()
+      throw new ApiAuthError('Сессия истекла. Пожалуйста, войдите снова.', 401)
+    }
+
+    // Retry with the new access token
+    return fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${newSession.accessToken}`,
+      },
+    })
+  }
+
+  return response
 }
 
 export function toOfflineArticle(remoteArticle: RemoteArticle): OfflineArticle {
@@ -58,6 +103,8 @@ export function toOfflineArticle(remoteArticle: RemoteArticle): OfflineArticle {
       content: note.content,
       createdAt: note.createdAt ?? Date.now(),
     })),
+    isFavorite: false,
+    isReadLater: false,
   }
 }
 
@@ -67,9 +114,8 @@ export async function syncArticleToServer(article: Article): Promise<{
 }> {
   const externalId = article.id ?? crypto.randomUUID()
 
-  const response = await fetch(`${API_BASE_URL}/api/articles/sync`, {
+  const response = await authFetch(`${API_BASE_URL}/api/articles/sync`, {
     method: 'POST',
-    headers: await buildHeaders(),
     body: JSON.stringify({
       externalId,
       url: article.url,
@@ -86,9 +132,8 @@ export async function syncArticleToServer(article: Article): Promise<{
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiAuthError('Сервер отклонил запрос. Проверьте сохраненный токен расширения.', response.status)
+      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
     }
-
     throw new Error(`Sync failed with status ${response.status}`)
   }
 
@@ -105,6 +150,8 @@ export async function syncArticleToServer(article: Article): Promise<{
           updatedAt: Date.now(),
           syncStatus: 'SYNCED' as const,
           notes: article.notes ?? [],
+          isFavorite: article.isFavorite ?? false,
+          isReadLater: article.isReadLater ?? false,
         }
 
   return {
@@ -114,49 +161,57 @@ export async function syncArticleToServer(article: Article): Promise<{
 }
 
 export async function deleteArticleFromServer(articleExternalId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/articles/${encodeURIComponent(articleExternalId)}`, {
-    method: 'DELETE',
-    headers: await buildHeaders(),
-  })
+  const response = await authFetch(
+    `${API_BASE_URL}/api/articles/${encodeURIComponent(articleExternalId)}`,
+    { method: 'DELETE' },
+  )
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiAuthError('Сервер отклонил запрос. Проверьте сохраненный токен расширения.', response.status)
+      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
     }
-
     throw new Error(`Delete article failed with status ${response.status}`)
   }
 }
 
 export async function deleteNoteFromServer(articleExternalId: string, noteExternalId: string): Promise<void> {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/api/articles/${encodeURIComponent(articleExternalId)}/notes/${encodeURIComponent(noteExternalId)}`,
-    {
-      method: 'DELETE',
-      headers: await buildHeaders(),
-    },
+    { method: 'DELETE' },
   )
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiAuthError('Сервер отклонил запрос. Проверьте сохраненный токен расширения.', response.status)
+      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
     }
-
     throw new Error(`Delete note failed with status ${response.status}`)
   }
 }
 
-export async function fetchArticlesFromServer(): Promise<OfflineArticle[]> {
-  const response = await fetch(`${API_BASE_URL}/api/articles`, {
-    method: 'GET',
-    headers: await buildHeaders(),
-  })
+export async function fetchArticleAI(articleId: string): Promise<{ status: AIStatus; result?: AIResult }> {
+  const response = await authFetch(
+    `${API_BASE_URL}/api/articles/${encodeURIComponent(articleId)}/ai`,
+    { method: 'GET' },
+  )
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiAuthError('Сервер отклонил загрузку библиотеки. Проверьте токен расширения.', response.status)
+      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
     }
+    throw new Error(`Fetch AI failed with status ${response.status}`)
+  }
 
+  const data = (await response.json()) as { aiStatus: AIStatus; aiResult?: AIResult }
+  return { status: data.aiStatus, result: data.aiResult }
+}
+
+export async function fetchArticlesFromServer(): Promise<OfflineArticle[]> {
+  const response = await authFetch(`${API_BASE_URL}/api/articles`, { method: 'GET' })
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiAuthError('Сервер отклонил загрузку библиотеки. Войдите снова.', response.status)
+    }
     throw new Error(`Fetch failed with status ${response.status}`)
   }
 

@@ -50,6 +50,8 @@ export function toOfflineArticle(remoteArticle: RemoteArticle): OfflineArticle {
       content: note.content,
       createdAt: note.createdAt ?? Date.now(),
     })),
+    isFavorite: false,
+    isReadLater: false,
   }
 }
 
@@ -127,6 +129,8 @@ export async function syncArticleToServer(article: Article): Promise<{
           updatedAt: Date.now(),
           syncStatus: 'SYNCED' as const,
           notes: article.notes ?? [],
+          isFavorite: article.isFavorite ?? false,
+          isReadLater: article.isReadLater ?? false,
         }
 
   return {
