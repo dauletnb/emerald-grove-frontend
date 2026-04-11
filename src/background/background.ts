@@ -81,6 +81,8 @@ async function handleSaveArticle(
       updatedAt: Date.now(),
       syncStatus: 'PENDING_SYNC',
       notes: article.notes ?? [],
+      isFavorite: article.isFavorite ?? false,
+      isReadLater: article.isReadLater ?? false,
     })
 
     sendResponse({ status: 'offline_saved' })

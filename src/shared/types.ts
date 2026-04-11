@@ -1,5 +1,22 @@
 export type NoteType = 'IDEA' | 'TASK' | 'QUESTION'
 
+export interface AIResult {
+  summary: {
+    short: string
+    detailed: string
+  }
+  keyPoints: string[]
+  tags: string[]
+  highlights: {
+    text: string
+    explanation: string
+  }[]
+}
+
+export type AIStatus = 'PENDING' | 'DONE' | 'FAILED'
+
+export type SystemSection = 'ALL' | 'RECENT' | 'FAVORITES' | 'READ_LATER'
+
 export interface ArticleNote {
   id: string
   type: NoteType
@@ -16,7 +33,27 @@ export interface Article {
   updatedAt?: number
   syncStatus?: 'SYNCED' | 'PENDING_SYNC'
   notes?: ArticleNote[]
+  isFavorite?: boolean
+  isReadLater?: boolean
 }
+
+export interface ArticleCollection {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ArticleCollectionLink {
+  id: string
+  articleId: string
+  collectionId: string
+  createdAt: number
+}
+
+export type LibrarySection =
+  | { type: 'system'; id: SystemSection }
+  | { type: 'collection'; id: string }
 
 export enum MessageType {
   GET_PAGE_DATA = 'GET_PAGE_DATA',

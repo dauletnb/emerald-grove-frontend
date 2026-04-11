@@ -1,4 +1,18 @@
+/**
+ * Authentication API layer.
+ *
+ * How auth works (beginner explanation):
+ * 1. User registers or logs in — backend returns two tokens:
+ *    - accessToken: a short-lived JWT (15 min) that proves identity on every request
+ *    - refreshToken: a long-lived random string (7 days) stored in the database, used to get new access tokens
+ * 2. The extension stores both tokens in chrome.storage.local
+ * 3. Every API request attaches the access token in the Authorization header
+ * 4. When the access token expires (401 response), the frontend calls /api/auth/refresh with the refresh token
+ * 5. Logout revokes the refresh token so it can no longer be used
+ */
+
 import { API_BASE_URL } from '@/config'
+import { clearAuthSession, getAuthSession, setAuthSession, type AuthSession } from '../auth/authSession'
 
 export class ApiAuthError extends Error {
   readonly status: number
@@ -10,35 +24,134 @@ export class ApiAuthError extends Error {
   }
 }
 
-function createAuthHeaders(token: string): HeadersInit {
-  return {
-    Authorization: `Bearer ${token.trim()}`,
+type AuthApiResponse = {
+  accessToken: string
+  refreshToken: string
+  user: {
+    id: number
+    email: string
+    displayName: string
   }
 }
 
-export async function verifyServerToken(token: string): Promise<void> {
-  const normalizedToken = token.trim()
+let refreshSessionPromise: Promise<AuthSession | null> | null = null
 
-  if (!normalizedToken) {
-    throw new ApiAuthError('Введите токен подключения к серверу.', 401)
-  }
-
-  const response = await fetch(`${API_BASE_URL}/api/auth/check`, {
-    method: 'GET',
-    headers: createAuthHeaders(normalizedToken),
+export async function loginUser(email: string, password: string): Promise<AuthSession> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
   })
 
-  if (response.ok) {
-    return
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '')
+    const message = tryParseErrorMessage(errorText) ?? 'Invalid email or password.'
+    throw new ApiAuthError(message, response.status)
   }
 
-  if (response.status === 401) {
-    throw new ApiAuthError('Сервер отклонил токен. Проверьте значение и попробуйте снова.', 401)
+  const data = (await response.json()) as AuthApiResponse
+  const session: AuthSession = {
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+    user: data.user,
+  }
+  await setAuthSession(session)
+  return session
+}
+
+export async function registerUser(email: string, password: string, displayName?: string): Promise<AuthSession> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, displayName }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '')
+    const message = tryParseErrorMessage(errorText) ?? 'Registration failed.'
+    throw new ApiAuthError(message, response.status)
   }
 
-  if (response.status === 403) {
-    throw new ApiAuthError('Сервер отклонил запрос расширения. Проверьте CORS-настройки backend.', 403)
+  const data = (await response.json()) as AuthApiResponse
+  const session: AuthSession = {
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+    user: data.user,
+  }
+  await setAuthSession(session)
+  return session
+}
+
+export async function logoutUser(): Promise<void> {
+  const session = await getAuthSession()
+  if (session) {
+    // Best-effort: tell the server to revoke the refresh token
+    await fetch(`${API_BASE_URL}/api/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    }).catch(() => {
+      // Ignore server errors on logout — local session is cleared regardless
+    })
+  }
+  await clearAuthSession()
+}
+
+/**
+ * Tries to refresh the access token using the stored refresh token.
+ * Returns the new session, or null if the refresh token is expired/invalid.
+ */
+export async function tryRefreshSession(): Promise<AuthSession | null> {
+  if (refreshSessionPromise) {
+    return refreshSessionPromise
   }
 
-  throw new ApiAuthError(`Проверка токена завершилась ошибкой сервера (${response.status}).`, response.status)
+  refreshSessionPromise = performRefreshSession()
+
+  try {
+    return await refreshSessionPromise
+  } finally {
+    refreshSessionPromise = null
+  }
+}
+
+async function performRefreshSession(): Promise<AuthSession | null> {
+  const session = await getAuthSession()
+  if (!session) return null
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    })
+
+    if (!response.ok) {
+      await clearAuthSession()
+      return null
+    }
+
+    const data = (await response.json()) as AuthApiResponse
+    const newSession: AuthSession = {
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      user: data.user,
+    }
+    await setAuthSession(newSession)
+    return newSession
+  } catch {
+    await clearAuthSession()
+    return null
+  }
+}
+
+function tryParseErrorMessage(text: string): string | null {
+  try {
+    const json = JSON.parse(text) as Record<string, unknown>
+    if (typeof json.message === 'string') return json.message
+    if (typeof json.error === 'string') return json.error
+  } catch {
+    // not JSON
+  }
+  return null
 }
