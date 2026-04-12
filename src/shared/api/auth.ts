@@ -34,6 +34,12 @@ type AuthApiResponse = {
   }
 }
 
+type CurrentUserResponse = {
+  id: number
+  email: string
+  displayName: string
+}
+
 let refreshSessionPromise: Promise<AuthSession | null> | null = null
 
 export async function loginUser(email: string, password: string): Promise<AuthSession> {
@@ -97,6 +103,41 @@ export async function logoutUser(): Promise<void> {
   await clearAuthSession()
 }
 
+export async function restoreAuthSession(): Promise<AuthSession | null> {
+  const session = await getAuthSession()
+
+  if (!session) {
+    return null
+  }
+
+  try {
+    const user = await fetchCurrentUser(session.accessToken)
+    const restoredSession = { ...session, user }
+    await setAuthSession(restoredSession)
+    return restoredSession
+  } catch (error) {
+    if (!(error instanceof ApiAuthError) || (error.status !== 401 && error.status !== 403)) {
+      return session
+    }
+  }
+
+  const refreshedSession = await tryRefreshSession()
+
+  if (!refreshedSession) {
+    return null
+  }
+
+  try {
+    const user = await fetchCurrentUser(refreshedSession.accessToken)
+    const restoredSession = { ...refreshedSession, user }
+    await setAuthSession(restoredSession)
+    return restoredSession
+  } catch {
+    await clearAuthSession()
+    return null
+  }
+}
+
 /**
  * Tries to refresh the access token using the stored refresh token.
  * Returns the new session, or null if the refresh token is expired/invalid.
@@ -143,6 +184,21 @@ async function performRefreshSession(): Promise<AuthSession | null> {
     await clearAuthSession()
     return null
   }
+}
+
+async function fetchCurrentUser(accessToken: string): Promise<AuthSession['user']> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new ApiAuthError('Failed to restore the current session.', response.status)
+  }
+
+  return (await response.json()) as CurrentUserResponse
 }
 
 function tryParseErrorMessage(text: string): string | null {

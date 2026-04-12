@@ -28,23 +28,16 @@ type SyncArticleApiResponse = {
   articleId?: number
 }
 
-/**
- * Gets the access token, refreshing it if needed.
- * Throws ApiAuthError if there is no session or the refresh also fails.
- */
 async function getValidAccessToken(): Promise<string> {
   const session = await getAuthSession()
 
   if (!session) {
-    throw new ApiAuthError('Not logged in. Please log in from the extension popup.', 401)
+    throw new ApiAuthError('No active session found. Please sign in from the extension popup.', 401)
   }
 
   return session.accessToken
 }
 
-/**
- * Builds headers with the current access token.
- */
 async function buildHeaders(): Promise<HeadersInit> {
   const token = await getValidAccessToken()
   return {
@@ -53,11 +46,6 @@ async function buildHeaders(): Promise<HeadersInit> {
   }
 }
 
-/**
- * Executes an authenticated fetch. If the server responds with 401,
- * tries to refresh the access token once and retries the request.
- * If the refresh also fails, clears the session and throws ApiAuthError.
- */
 async function authFetch(url: string, options: RequestInit): Promise<Response> {
   const response = await fetch(url, {
     ...options,
@@ -65,15 +53,13 @@ async function authFetch(url: string, options: RequestInit): Promise<Response> {
   })
 
   if (response.status === 401) {
-    // Try to refresh the session
     const newSession = await tryRefreshSession()
 
     if (!newSession) {
       await clearAuthSession()
-      throw new ApiAuthError('Сессия истекла. Пожалуйста, войдите снова.', 401)
+      throw new ApiAuthError('Your session expired. Please sign in again.', 401)
     }
 
-    // Retry with the new access token
     return fetch(url, {
       ...options,
       headers: {
@@ -132,7 +118,7 @@ export async function syncArticleToServer(article: Article): Promise<{
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
+      throw new ApiAuthError('The server rejected the request. Please sign in again.', response.status)
     }
     throw new Error(`Sync failed with status ${response.status}`)
   }
@@ -168,7 +154,7 @@ export async function deleteArticleFromServer(articleExternalId: string): Promis
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
+      throw new ApiAuthError('The server rejected the request. Please sign in again.', response.status)
     }
     throw new Error(`Delete article failed with status ${response.status}`)
   }
@@ -182,7 +168,7 @@ export async function deleteNoteFromServer(articleExternalId: string, noteExtern
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
+      throw new ApiAuthError('The server rejected the request. Please sign in again.', response.status)
     }
     throw new Error(`Delete note failed with status ${response.status}`)
   }
@@ -196,7 +182,7 @@ export async function fetchArticleAI(articleId: string): Promise<{ status: AISta
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
+      throw new ApiAuthError('The server rejected the request. Please sign in again.', response.status)
     }
     throw new Error(`Fetch AI failed with status ${response.status}`)
   }
@@ -210,7 +196,7 @@ export async function fetchArticlesFromServer(): Promise<OfflineArticle[]> {
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiAuthError('Сервер отклонил загрузку библиотеки. Войдите снова.', response.status)
+      throw new ApiAuthError('The server rejected the library request. Please sign in again.', response.status)
     }
     throw new Error(`Fetch failed with status ${response.status}`)
   }
