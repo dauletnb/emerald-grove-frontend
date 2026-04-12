@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AiPanel } from '../components/AiPanel'
 import { SafeNoteRenderer } from '../components/SafeNoteRenderer'
+import { ApiAuthError } from '../shared/api/auth'
 import { deleteArticleFromServer, deleteNoteFromServer, fetchArticleAI, fetchArticlesFromServer, syncArticleToServer } from '../shared/api/articles'
 import type { AIResult, AIStatus } from '../shared/types'
 import {
@@ -237,7 +238,21 @@ export function LibraryApp() {
   const [sidebarSectionSearchQuery, setSidebarSectionSearchQuery] = useState('')
   const [manageSectionSearchQuery, setManageSectionSearchQuery] = useState('')
   const [aiCache, setAiCache] = useState<Record<string, { status: AIStatus; result?: AIResult }>>({})
+  const [authMessage, setAuthMessage] = useState('')
   const aiInitiated = useRef<Set<string>>(new Set())
+
+  function updateAuthMessage(error: unknown, fallback: string) {
+    if (error instanceof ApiAuthError) {
+      setAuthMessage(error.message)
+      return true
+    }
+
+    if (fallback) {
+      setAuthMessage(fallback)
+    }
+
+    return false
+  }
 
   async function refreshArticles() {
     const data = await getAllArticles()
@@ -305,12 +320,14 @@ export function LibraryApp() {
 
         const remoteArticles = await fetchArticlesFromServer()
         await saveArticlesOffline(remoteArticles)
+        setAuthMessage('')
 
         if (!cancelled) {
           const refreshedArticles = await getAllArticles()
           setArticles(refreshedArticles)
         }
       } catch (error) {
+        updateAuthMessage(error, '')
         console.warn('Library sync failed', error)
       }
 
@@ -429,9 +446,11 @@ export function LibraryApp() {
 
     fetchArticleAI(articleId)
       .then(({ status, result }) => {
+        setAuthMessage('')
         setAiCache((prev) => ({ ...prev, [articleId]: { status, result } }))
       })
-      .catch(() => {
+      .catch((error) => {
+        updateAuthMessage(error, '')
         setAiCache((prev) => ({ ...prev, [articleId]: { status: 'FAILED' } }))
       })
   }
@@ -449,7 +468,9 @@ export function LibraryApp() {
     await refreshCollections()
     try {
       await deleteArticleFromServer(id)
+      setAuthMessage('')
     } catch (error) {
+      updateAuthMessage(error, '')
       console.warn('Failed to delete article from server', error)
     }
   }
@@ -472,8 +493,10 @@ export function LibraryApp() {
     try {
       await deleteArticleNote(articleId, noteId)
       await deleteNoteFromServer(articleId, noteId)
+      setAuthMessage('')
       await refreshLibraryState()
     } catch (error) {
+      updateAuthMessage(error, '')
       console.error('Failed to delete note', error)
       await refreshLibraryState()
     }
@@ -498,6 +521,7 @@ export function LibraryApp() {
 
       const syncedArticle = await syncArticleToServer(localArticle)
       await saveArticleOffline(syncedArticle.article)
+      setAuthMessage('')
       await refreshLibraryState()
 
       setDrafts((prev) => ({
@@ -506,6 +530,7 @@ export function LibraryApp() {
       }))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save the note.'
+      updateAuthMessage(error, '')
       updateDraft(articleId, { saving: false, error: message })
       await refreshLibraryState()
     }
@@ -580,6 +605,12 @@ export function LibraryApp() {
             </div>
           </div>
         </div>
+
+        {authMessage ? (
+          <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-[0_10px_30px_rgba(120,53,15,0.08)]">
+            {authMessage}
+          </div>
+        ) : null}
 
         {articles.length === 0 ? (
           <EmptyArticleState />
