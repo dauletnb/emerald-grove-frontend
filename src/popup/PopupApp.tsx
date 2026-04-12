@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react'
-import { loginUser, logoutUser, registerUser, ApiAuthError } from '../shared/api/auth'
-import { getAuthSession } from '../shared/auth/authSession'
+import { loginUser, logoutUser, registerUser, restoreAuthSession, ApiAuthError } from '../shared/api/auth'
 import { MessageType, SaveStatus } from '../shared/types'
 import type { Article, SaveArticleResponse } from '../shared/types'
 import type { AuthUser } from '../shared/auth/authSession'
 
 const STATUS_MESSAGES: Record<SaveStatus, string> = {
-  [SaveStatus.SUCCESS]: 'Статья успешно сохранена',
-  [SaveStatus.UPDATED]: 'Статья уже существует и была обновлена',
-  [SaveStatus.OFFLINE_SAVED]: 'Сервер недоступен, статья сохранена локально',
-  [SaveStatus.SERVER_ERROR]: 'Сервер вернул ошибку при сохранении',
-  [SaveStatus.FAILED]: 'Не удалось сохранить статью',
+  [SaveStatus.SUCCESS]: 'Article saved successfully.',
+  [SaveStatus.UPDATED]: 'Article already existed and was updated.',
+  [SaveStatus.OFFLINE_SAVED]: 'Server is unavailable. The article was saved locally.',
+  [SaveStatus.SERVER_ERROR]: 'The server rejected the save request.',
+  [SaveStatus.FAILED]: 'Failed to save the article.',
 }
 
 type AuthMode = 'login' | 'register'
@@ -21,7 +20,7 @@ export function PopupApp() {
 
   useEffect(() => {
     void (async () => {
-      const session = await getAuthSession()
+      const session = await restoreAuthSession()
       setUser(session?.user ?? null)
       setCheckingAuth(false)
     })()
@@ -39,7 +38,7 @@ export function PopupApp() {
   if (checkingAuth) {
     return (
       <div className="w-80 bg-white p-4 text-sm font-sans">
-        <p className="text-gray-400">Загрузка...</p>
+        <p className="text-gray-400">Loading...</p>
       </div>
     )
   }
@@ -56,8 +55,6 @@ export function PopupApp() {
     </div>
   )
 }
-
-// --- Auth form (login / register toggle) ---
 
 function AuthFormView({ onLoginSuccess }: { onLoginSuccess: (user: AuthUser) => void }) {
   const [mode, setMode] = useState<AuthMode>('login')
@@ -79,27 +76,29 @@ function AuthFormView({ onLoginSuccess }: { onLoginSuccess: (user: AuthUser) => 
 
       onLoginSuccess(session.user)
     } catch (err) {
-      setErrorMsg(err instanceof ApiAuthError ? err.message : 'Произошла ошибка. Попробуйте снова.')
+      setErrorMsg(err instanceof ApiAuthError ? err.message : 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   function toggleMode() {
-    setMode((m) => (m === 'login' ? 'register' : 'login'))
+    setMode((current) => (current === 'login' ? 'register' : 'login'))
     setErrorMsg('')
   }
 
   return (
     <div className="space-y-3">
-      <p className="text-gray-600 text-xs">
-        {mode === 'login' ? 'Войдите в аккаунт, чтобы сохранять статьи.' : 'Создайте аккаунт для синхронизации статей.'}
+      <p className="text-xs text-gray-600">
+        {mode === 'login'
+          ? 'Sign in to save and sync your articles.'
+          : 'Create an account to sync your library across devices.'}
       </p>
 
       <input
         type="email"
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        onChange={(event) => setEmail(event.target.value)}
         placeholder="Email"
         className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-green-500"
       />
@@ -107,43 +106,45 @@ function AuthFormView({ onLoginSuccess }: { onLoginSuccess: (user: AuthUser) => 
       <input
         type="password"
         value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="Пароль (мин. 8 символов)"
+        onChange={(event) => setPassword(event.target.value)}
+        placeholder="Password (min. 8 characters)"
         className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-green-500"
-        onKeyDown={(e) => { if (e.key === 'Enter') void handleSubmit() }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            void handleSubmit()
+          }
+        }}
       />
 
-      {mode === 'register' && (
+      {mode === 'register' ? (
         <input
           type="text"
           value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Имя (необязательно)"
+          onChange={(event) => setDisplayName(event.target.value)}
+          placeholder="Display name (optional)"
           className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-green-500"
         />
-      )}
+      ) : null}
 
       <button
         disabled={loading}
         onClick={() => void handleSubmit()}
         className="w-full rounded bg-green-600 px-4 py-2 text-white transition-all hover:bg-green-700 active:scale-95 disabled:bg-gray-400"
       >
-        {loading ? 'Загрузка...' : mode === 'login' ? 'Войти' : 'Зарегистрироваться'}
+        {loading ? 'Working...' : mode === 'login' ? 'Sign in' : 'Create account'}
       </button>
 
-      {errorMsg && <p className="text-xs text-red-500">{errorMsg}</p>}
+      {errorMsg ? <p className="text-xs text-red-500">{errorMsg}</p> : null}
 
       <button
         onClick={toggleMode}
-        className="w-full text-xs text-gray-400 hover:text-green-600 transition-colors"
+        className="w-full text-xs text-gray-400 transition-colors hover:text-green-600"
       >
-        {mode === 'login' ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти'}
+        {mode === 'login' ? "Don't have an account? Create one" : 'Already have an account? Sign in'}
       </button>
     </div>
   )
 }
-
-// --- Authenticated view ---
 
 function AuthenticatedView({ user, onLogout }: { user: AuthUser; onLogout: () => Promise<void> }) {
   const [loading, setLoading] = useState(false)
@@ -157,9 +158,12 @@ function AuthenticatedView({ user, onLogout }: { user: AuthUser; onLogout: () =>
   const getActiveTab = async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
 
-    if (!tab?.id) throw new Error('Не удалось найти активную вкладку')
+    if (!tab?.id) {
+      throw new Error('Could not find the active browser tab.')
+    }
+
     if (!tab.url || !/^https?:\/\//.test(tab.url)) {
-      throw new Error('Сохранение доступно только на обычных страницах сайтов')
+      throw new Error('Saving is only available on regular website pages.')
     }
 
     return tab
@@ -167,20 +171,24 @@ function AuthenticatedView({ user, onLogout }: { user: AuthUser; onLogout: () =>
 
   const saveArticle = async () => {
     setLoading(true)
-    setStatusMsg('Собираю данные со страницы...')
+    setStatusMsg('Collecting article data from the page...')
 
     try {
       const tab = await getActiveTab()
 
-      if (tab.id === undefined) throw new Error('Не удалось найти идентификатор вкладки')
+      if (tab.id === undefined) {
+        throw new Error('Could not resolve the current tab identifier.')
+      }
 
       const pageData = (await chrome.tabs.sendMessage(tab.id, {
         type: MessageType.GET_PAGE_DATA,
       })) as Article | undefined
 
-      if (!pageData) throw new Error('Не удалось получить данные статьи')
+      if (!pageData) {
+        throw new Error('Could not extract article data from the page.')
+      }
 
-      setStatusMsg('Сохраняю статью...')
+      setStatusMsg('Saving the article...')
 
       const response = (await chrome.runtime.sendMessage({
         type: MessageType.SAVE_ARTICLE,
@@ -189,7 +197,7 @@ function AuthenticatedView({ user, onLogout }: { user: AuthUser; onLogout: () =>
 
       setStatusMsg(response?.message ?? STATUS_MESSAGES[response?.status ?? SaveStatus.FAILED])
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : 'Неизвестная ошибка')
+      setStatusMsg(err instanceof Error ? err.message : 'Unknown error.')
     } finally {
       setLoading(false)
     }
@@ -197,34 +205,32 @@ function AuthenticatedView({ user, onLogout }: { user: AuthUser; onLogout: () =>
 
   return (
     <div className="space-y-3">
-      <p className="text-center text-xs text-emerald-700 font-medium">
-        {user.displayName || user.email}
-      </p>
+      <p className="text-center text-xs font-medium text-emerald-700">{user.displayName || user.email}</p>
 
       <button
         disabled={loading}
         onClick={() => void saveArticle()}
-        className={`w-full flex items-center justify-center gap-2 rounded py-2 font-medium text-white shadow-sm transition-colors ${
+        className={`flex w-full items-center justify-center gap-2 rounded py-2 font-medium text-white shadow-sm transition-colors ${
           loading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'
         }`}
       >
-        {loading ? 'Сохранение...' : 'Сохранить текущую статью'}
+        {loading ? 'Saving...' : 'Save current article'}
       </button>
 
-      {statusMsg && <p className="text-center text-xs text-blue-600">{statusMsg}</p>}
+      {statusMsg ? <p className="text-center text-xs text-blue-600">{statusMsg}</p> : null}
 
       <button
         onClick={() => void openLibrary()}
         className="w-full rounded border border-gray-300 py-2 text-gray-700 transition-colors hover:bg-gray-50"
       >
-        Открыть библиотеку
+        Open library
       </button>
 
       <button
         onClick={() => void onLogout()}
         className="w-full text-xs uppercase tracking-wider text-gray-400 transition-colors hover:text-red-400"
       >
-        Выйти
+        Sign out
       </button>
     </div>
   )
