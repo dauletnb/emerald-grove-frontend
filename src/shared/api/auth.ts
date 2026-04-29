@@ -51,7 +51,7 @@ export async function loginUser(email: string, password: string): Promise<AuthSe
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '')
-    const message = tryParseErrorMessage(errorText) ?? 'Invalid email or password.'
+    const message = tryParseErrorMessage(errorText) ?? 'Неверная почта или пароль.'
     throw new ApiAuthError(message, response.status)
   }
 
@@ -74,7 +74,7 @@ export async function registerUser(email: string, password: string, displayName?
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '')
-    const message = tryParseErrorMessage(errorText) ?? 'Registration failed.'
+    const message = tryParseErrorMessage(errorText) ?? 'Не удалось зарегистрироваться.'
     throw new ApiAuthError(message, response.status)
   }
 
@@ -195,7 +195,7 @@ async function fetchCurrentUser(accessToken: string): Promise<AuthSession['user'
   })
 
   if (!response.ok) {
-    throw new ApiAuthError('Failed to restore the current session.', response.status)
+    throw new ApiAuthError('Не удалось восстановить текущую сессию.', response.status)
   }
 
   return (await response.json()) as CurrentUserResponse
