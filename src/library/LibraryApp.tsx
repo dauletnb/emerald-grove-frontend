@@ -24,9 +24,9 @@ import {
 import type { ArticleCollection, ArticleNote, LibrarySection, NoteType, SystemSection } from '../shared/types'
 
 const noteTypeOptions: Array<{ value: NoteType; label: string; badgeClass: string; dotClass: string }> = [
-  { value: 'IDEA', label: 'Idea', badgeClass: 'bg-emerald-100 text-emerald-800', dotClass: 'bg-emerald-500' },
-  { value: 'TASK', label: 'Task', badgeClass: 'bg-amber-100 text-amber-800', dotClass: 'bg-amber-500' },
-  { value: 'QUESTION', label: 'Question', badgeClass: 'bg-indigo-100 text-indigo-800', dotClass: 'bg-indigo-500' },
+  { value: 'IDEA', label: 'Идея', badgeClass: 'bg-emerald-100 text-emerald-800', dotClass: 'bg-emerald-500' },
+  { value: 'TASK', label: 'Задача', badgeClass: 'bg-amber-100 text-amber-800', dotClass: 'bg-amber-500' },
+  { value: 'QUESTION', label: 'Вопрос', badgeClass: 'bg-indigo-100 text-indigo-800', dotClass: 'bg-indigo-500' },
 ]
 
 const noteFilters = ['ALL', 'IDEA', 'TASK', 'QUESTION'] as const
@@ -42,10 +42,10 @@ type DraftState = {
 }
 
 const systemSections: Array<{ id: SystemSection; label: string; description: string }> = [
-  { id: 'ALL', label: 'All', description: 'Everything in the library' },
-  { id: 'RECENT', label: 'Recent', description: 'Sorted by latest activity' },
-  { id: 'FAVORITES', label: 'Favorites', description: 'Pinned for quick access' },
-  { id: 'READ_LATER', label: 'Read later', description: 'Queued for review' },
+  { id: 'ALL', label: 'Все', description: 'Все материалы в библиотеке' },
+  { id: 'RECENT', label: 'Недавние', description: 'Отсортировано по последней активности' },
+  { id: 'FAVORITES', label: 'Избранное', description: 'Закреплено для быстрого доступа' },
+  { id: 'READ_LATER', label: 'Прочитать позже', description: 'Отложено на потом' },
 ]
 
 function createDraftState(): DraftState {
@@ -182,9 +182,9 @@ function EmptyArticleState() {
       <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-2xl text-emerald-700">
         +
       </div>
-      <h2 className="text-xl font-semibold text-slate-900">Library is still empty</h2>
+      <h2 className="text-xl font-semibold text-slate-900">Библиотека пока пуста</h2>
       <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-600">
-        Save a few articles first, then we can turn them into working knowledge with questions, ideas, and next steps.
+        Сначала сохраните несколько статей, а потом мы превратим их в рабочие заметки, вопросы, идеи и следующие шаги.
       </p>
     </div>
   )
@@ -193,7 +193,7 @@ function EmptyArticleState() {
 function EmptyNotesState() {
   return (
     <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm leading-6 text-slate-500">
-      No notes yet. Start with a question, capture an implementation idea, or turn the article into a concrete task.
+      Заметок пока нет. Начните с вопроса, зафиксируйте идею реализации или превратите статью в конкретную задачу.
     </div>
   )
 }
@@ -507,7 +507,7 @@ export function LibraryApp() {
     const content = draft.content.trim()
 
     if (!content) {
-      updateDraft(articleId, { error: 'Please add a short note before saving.' })
+      updateDraft(articleId, { error: 'Перед сохранением добавьте короткую заметку.' })
       return
     }
 
@@ -529,7 +529,7 @@ export function LibraryApp() {
         [articleId]: createDraftState(),
       }))
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to save the note.'
+      const message = error instanceof Error ? error.message : 'Не удалось сохранить заметку.'
       updateAuthMessage(error, '')
       updateDraft(articleId, { saving: false, error: message })
       await refreshLibraryState()
@@ -550,7 +550,7 @@ export function LibraryApp() {
     const name = newCollectionName.trim()
 
     if (!name) {
-      setCollectionError('Add a name for the custom section.')
+      setCollectionError('Добавьте название для пользовательского раздела.')
       return
     }
 
@@ -561,7 +561,7 @@ export function LibraryApp() {
       setSidebarSectionSearchQuery('')
       await refreshCollections()
     } catch (error) {
-      setCollectionError(error instanceof Error ? error.message : 'Failed to create custom section.')
+      setCollectionError(error instanceof Error ? error.message : 'Не удалось создать пользовательский раздел.')
     }
   }
 
@@ -588,7 +588,7 @@ export function LibraryApp() {
   )
 
   if (articles === null) {
-    return <div className="min-h-screen bg-slate-950 px-6 py-10 text-sm text-white">Loading library...</div>
+    return <div className="min-h-screen bg-slate-950 px-6 py-10 text-sm text-white">Загрузка библиотеки...</div>
   }
 
   return (
@@ -600,8 +600,8 @@ export function LibraryApp() {
               EG
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Library</p>
-              <p className="text-sm text-slate-500">{articles.length} saved articles</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Библиотека</p>
+              <p className="text-sm text-slate-500">{articles.length} сохранённых статей</p>
             </div>
           </div>
         </div>
@@ -618,7 +618,7 @@ export function LibraryApp() {
           <div className="grid gap-5 items-start xl:grid-cols-[236px_minmax(0,1.18fr)_minmax(380px,0.9fr)]">
             <aside className="rounded-[28px] border border-white/70 bg-white/82 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.07)] backdrop-blur sm:p-5">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Sections</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Разделы</p>
                 <div className="mt-4 space-y-2.5">
                   {systemSections.map((section) => (
                     <SectionButton
@@ -635,8 +635,8 @@ export function LibraryApp() {
 
               <div className="mt-6 border-t border-slate-100 pt-5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Custom sections</p>
-                  <span className="text-xs text-slate-400">{collections.length} total</span>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Пользовательские разделы</p>
+                  <span className="text-xs text-slate-400">Всего: {collections.length}</span>
                 </div>
 
                 <div className="mt-4 space-y-3">
@@ -644,14 +644,14 @@ export function LibraryApp() {
                     type="search"
                     value={sidebarSectionSearchQuery}
                     onChange={(event) => setSidebarSectionSearchQuery(event.target.value)}
-                    placeholder="Search custom sections"
+                    placeholder="Поиск по пользовательским разделам"
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
                   />
 
                   <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                     {filteredSidebarCollections.length === 0 ? (
                       <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                        No custom sections yet.
+                        Пользовательских разделов пока нет.
                       </div>
                     ) : (
                       filteredSidebarCollections.map((collection) => (
@@ -676,7 +676,7 @@ export function LibraryApp() {
                   </div>
 
                   <div className="border-t border-slate-100 pt-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Create custom section</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Создать пользовательский раздел</p>
                     <div className="mt-3 space-y-2">
                       <input
                         type="text"
@@ -685,14 +685,14 @@ export function LibraryApp() {
                           setNewCollectionName(event.target.value)
                           setCollectionError('')
                         }}
-                        placeholder="Custom section name"
+                        placeholder="Название раздела"
                         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
                       />
                       <button
                         onClick={() => void handleCreateCollectionFromSidebar()}
                         className="w-full rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                       >
-                        Create custom section
+                        Создать раздел
                       </button>
                       {collectionError ? <p className="text-xs text-rose-500">{collectionError}</p> : null}
                     </div>
@@ -707,17 +707,17 @@ export function LibraryApp() {
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">
                     {selectedSection.type === 'system'
-                      ? systemSections.find((section) => section.id === selectedSection.id)?.label ?? 'Saved articles'
-                      : collections.find((collection) => collection.id === selectedSection.id)?.name ?? 'Custom section'}
+                      ? systemSections.find((section) => section.id === selectedSection.id)?.label ?? 'Сохранённые статьи'
+                      : collections.find((collection) => collection.id === selectedSection.id)?.name ?? 'Пользовательский раздел'}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-500">{sectionArticles.length} articles in this view</p>
+                  <p className="mt-1 text-sm text-slate-500">Статей в этом представлении: {sectionArticles.length}</p>
                 </div>
                 <div className="w-full sm:w-auto sm:min-w-[260px]">
                   <input
                     type="search"
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search by title"
+                    placeholder="Поиск по названию"
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
                   />
                 </div>
@@ -745,11 +745,11 @@ export function LibraryApp() {
                             {faviconLetter}
                           </span>
                           <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white">
-                            {counts.total} notes
+                            {counts.total} заметок
                           </span>
                           {article.syncStatus === 'PENDING_SYNC' ? (
                             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-800">
-                              Pending sync
+                              Ожидает синхронизации
                             </span>
                           ) : null}
                         </div>
@@ -771,14 +771,14 @@ export function LibraryApp() {
                           {article.isFavorite ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
                               <StarIcon className="h-3.5 w-3.5" />
-                              Favorite
+                              В избранном
                             </span>
                           ) : null}
 
                           {article.isReadLater ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
                               <ClockIcon className="h-3.5 w-3.5" />
-                              Read later
+                              Прочитать позже
                             </span>
                           ) : null}
 
@@ -801,8 +801,8 @@ export function LibraryApp() {
                           <SoftActionButton
                             active={article.isFavorite}
                             icon={<StarIcon className="h-3.5 w-3.5" />}
-                            activeLabel="Favorited"
-                            inactiveLabel="Favorite"
+                            activeLabel="В избранном"
+                            inactiveLabel="В избранное"
                             activeClassName="border-amber-200 bg-amber-50 text-amber-700"
                             onClick={() => void handleToggleFavorite(article)}
                           />
@@ -810,8 +810,8 @@ export function LibraryApp() {
                           <SoftActionButton
                             active={article.isReadLater}
                             icon={<ClockIcon className="h-3.5 w-3.5" />}
-                            activeLabel="Queued"
-                            inactiveLabel="Read later"
+                            activeLabel="Отложено"
+                            inactiveLabel="Прочитать позже"
                             activeClassName="border-sky-200 bg-sky-50 text-sky-700"
                             onClick={() => void handleToggleReadLater(article)}
                           />
@@ -822,14 +822,14 @@ export function LibraryApp() {
                             rel="noopener noreferrer"
                             className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
                           >
-                            Open source
+                            Открыть источник
                           </a>
                         </div>
 
                         <button
                           onClick={() => void handleDelete(article.id)}
                           className="rounded-full p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
-                          title="Delete article"
+                          title="Удалить статью"
                         >
                           <TrashIcon className="h-4 w-4" />
                         </button>
@@ -839,7 +839,7 @@ export function LibraryApp() {
                 })}
                 {filteredArticles.length === 0 ? (
                   <div className="rounded-[24px] border border-dashed border-slate-200 bg-white/70 px-5 py-10 text-center text-sm text-slate-500">
-                    No articles match this search.
+                    По этому запросу статьи не найдены.
                   </div>
                 ) : null}
               </div>
@@ -869,7 +869,7 @@ export function LibraryApp() {
                     <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-500">
                       <span>{formatDate(selectedArticle.createdAt)}</span>
                       <span className="h-1 w-1 rounded-full bg-slate-600" />
-                      <span>{selectedArticle.notes.length} total notes</span>
+                      <span>Всего заметок: {selectedArticle.notes.length}</span>
                     </div>
                   </div>
 
@@ -899,7 +899,7 @@ export function LibraryApp() {
                           active={noteFilter === filter}
                           onClick={() => setNoteFilter(filter)}
                         >
-                          {filter === 'ALL' ? 'All notes' : getNoteTypeMeta(filter).label}
+                          {filter === 'ALL' ? 'Все заметки' : getNoteTypeMeta(filter).label}
                         </FilterChip>
                       ))}
                     </div>
@@ -907,21 +907,21 @@ export function LibraryApp() {
 
                   <div className="border-b border-slate-100 p-6">
                     <div className="mb-5 rounded-[24px] bg-slate-50 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Article status</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Статус статьи</p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <SoftActionButton
                           active={selectedArticle.isFavorite}
                           icon={<StarIcon className="h-4 w-4" />}
-                          activeLabel="Favorite"
-                          inactiveLabel="Add to favorites"
+                          activeLabel="В избранном"
+                          inactiveLabel="Добавить в избранное"
                           activeClassName="border-amber-200 bg-amber-50 text-amber-700"
                           onClick={() => void handleToggleFavorite(selectedArticle)}
                         />
                         <SoftActionButton
                           active={selectedArticle.isReadLater}
                           icon={<ClockIcon className="h-4 w-4" />}
-                          activeLabel="Queued for later"
-                          inactiveLabel="Read later"
+                          activeLabel="Отложено на потом"
+                          inactiveLabel="Прочитать позже"
                           activeClassName="border-sky-200 bg-sky-50 text-sky-700"
                           onClick={() => void handleToggleReadLater(selectedArticle)}
                         />
@@ -931,11 +931,11 @@ export function LibraryApp() {
                     <div className="mb-5 rounded-[24px] bg-slate-50 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Custom sections</p>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Пользовательские разделы</p>
                           <p className="mt-1 text-xs text-slate-400">
                             {selectedArticleCollections.length > 0
-                              ? `${selectedArticleCollections.length} linked`
-                              : 'No custom sections yet'}
+                              ? `Связано разделов: ${selectedArticleCollections.length}`
+                              : 'Пользовательских разделов пока нет'}
                           </p>
                         </div>
                         <button
@@ -946,7 +946,7 @@ export function LibraryApp() {
                           }}
                           className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
                         >
-                          Manage custom sections
+                          Управлять разделами
                         </button>
                       </div>
 
@@ -960,7 +960,7 @@ export function LibraryApp() {
                           </span>
                         ))}
                         {selectedArticleCollections.length === 0 ? (
-                          <span className="text-sm text-slate-400">This article is not grouped yet.</span>
+                          <span className="text-sm text-slate-400">Эта статья пока не добавлена ни в один раздел.</span>
                         ) : null}
                       </div>
 
@@ -971,7 +971,7 @@ export function LibraryApp() {
                               type="search"
                               value={manageSectionSearchQuery}
                               onChange={(event) => setManageSectionSearchQuery(event.target.value)}
-                              placeholder="Filter custom sections"
+                              placeholder="Фильтр по разделам"
                               className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
                             />
 
@@ -989,12 +989,12 @@ export function LibraryApp() {
                                         : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
                                     }`}
                                   >
-                                    {active ? 'Selected' : 'Add'} {collection.name}
+                                    {active ? 'Выбрано' : 'Добавить'} {collection.name}
                                   </button>
                                 )
                               })}
                               {filteredManageCollections.length === 0 ? (
-                                <p className="text-sm text-slate-400">No matching custom sections.</p>
+                                <p className="text-sm text-slate-400">Подходящие пользовательские разделы не найдены.</p>
                               ) : null}
                             </div>
                           </div>
@@ -1003,7 +1003,7 @@ export function LibraryApp() {
                     </div>
 
                     <div className="space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">New note</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Новая заметка</p>
                       <div className="flex flex-wrap gap-2">
                         {noteTypeOptions.map((option) => {
                           const active = getDraft(selectedArticle.id).type === option.value
@@ -1037,7 +1037,7 @@ export function LibraryApp() {
                             error: '',
                           })
                         }
-                        placeholder="Capture the question, implementation idea, or next task while the article is still fresh."
+                        placeholder="Запишите вопрос, идею реализации или следующую задачу, пока статья ещё свежа в памяти."
                         rows={4}
                         maxLength={NOTE_CONTENT_MAX_LENGTH}
                         className="min-h-28 w-full rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
@@ -1057,7 +1057,7 @@ export function LibraryApp() {
                             : 'bg-emerald-400 text-slate-950 hover:bg-emerald-300'
                         }`}
                       >
-                        {getDraft(selectedArticle.id).saving ? 'Saving...' : 'Add note'}
+                        {getDraft(selectedArticle.id).saving ? 'Сохранение...' : 'Добавить заметку'}
                       </button>
                     </div>
                   </div>
@@ -1065,9 +1065,9 @@ export function LibraryApp() {
                   <div className="flex-1 p-6">
                     <div className="mb-4 flex items-center justify-between">
                       <h3 className="text-lg font-semibold text-slate-950">
-                        {noteFilter === 'ALL' ? 'All notes' : `${getNoteTypeMeta(noteFilter).label} notes`}
+                        {noteFilter === 'ALL' ? 'Все заметки' : `Заметки: ${getNoteTypeMeta(noteFilter).label}`}
                       </h3>
-                      <span className="text-sm text-slate-500">{selectedNotes.length} shown</span>
+                      <span className="text-sm text-slate-500">Показано: {selectedNotes.length}</span>
                     </div>
 
                     {selectedNotes.length === 0 ? (
@@ -1084,7 +1084,7 @@ export function LibraryApp() {
                               <button
                                 onClick={() => void handleDeleteNote(selectedArticle.id, note.id)}
                                 className="rounded-full p-1.5 text-slate-500 opacity-0 transition hover:bg-rose-400/10 hover:text-rose-400 group-hover:opacity-100"
-                                title="Delete note"
+                                title="Удалить заметку"
                               >
                                 <TrashIcon className="h-3.5 w-3.5" />
                               </button>
@@ -1103,7 +1103,7 @@ export function LibraryApp() {
                 </div>
               ) : (
                 <div className="flex h-full min-h-[420px] items-center justify-center p-8 text-center text-sm text-slate-400">
-                  Select an article to review its notes.
+                  Выберите статью, чтобы просмотреть её заметки.
                 </div>
               )}
             </aside>

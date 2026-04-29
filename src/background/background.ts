@@ -98,7 +98,7 @@ async function handleGetPageData(
     if (sender.tab?.id == null) {
       sendResponse({
         status: 'error',
-        message: 'No sender tab available',
+        message: 'Нет доступной вкладки-источника',
       })
       return
     }
@@ -139,7 +139,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       sendResponse({
         status: 'error',
         message: 'Внутренняя ошибка расширения',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : 'Неизвестная ошибка',
       })
     } finally {
       if (isSaveArticleMessage(message)) {
