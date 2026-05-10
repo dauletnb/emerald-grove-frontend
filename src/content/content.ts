@@ -9,6 +9,9 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
       const data: Article = {
         ...extractArticleFromDocument(document),
         url: window.location.href,
+        notes: [],
+        isFavorite: false,
+        isReadLater: false,
       }
 
       sendResponse(data)
@@ -19,6 +22,9 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
         title: normalizeText(document.title || 'No Title'),
         url: window.location.href,
         description: extractCleanText(document.body),
+        notes: [],
+        isFavorite: false,
+        isReadLater: false,
       })
     }
   }

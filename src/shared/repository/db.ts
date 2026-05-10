@@ -198,6 +198,7 @@ export async function setArticleFavorite(articleId: string, value: boolean): Pro
   return updateArticle(articleId, (article) => ({
     ...article,
     isFavorite: value,
+    syncStatus: 'PENDING_SYNC',
     updatedAt: Date.now(),
   }))
 }
@@ -206,6 +207,7 @@ export async function setArticleReadLater(articleId: string, value: boolean): Pr
   return updateArticle(articleId, (article) => ({
     ...article,
     isReadLater: value,
+    syncStatus: 'PENDING_SYNC',
     updatedAt: Date.now(),
   }))
 }

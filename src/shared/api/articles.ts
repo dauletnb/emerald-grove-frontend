@@ -11,7 +11,9 @@ type RemoteArticle = {
   url: string
   title: string
   description: string
-  isRead: boolean
+  isFavorite: boolean
+  isReadLater: boolean
+  aiStatus?: AIStatus | null
   createdAt: number | null
   updatedAt: number | null
   notes: Array<{
@@ -89,8 +91,8 @@ export function toOfflineArticle(remoteArticle: RemoteArticle): OfflineArticle {
       content: note.content,
       createdAt: note.createdAt ?? Date.now(),
     })),
-    isFavorite: false,
-    isReadLater: false,
+    isFavorite: remoteArticle.isFavorite ?? false,
+    isReadLater: remoteArticle.isReadLater ?? false,
   }
 }
 
@@ -107,6 +109,8 @@ export async function syncArticleToServer(article: Article): Promise<{
       url: article.url,
       title: article.title,
       description: article.description,
+      isFavorite: article.isFavorite,
+      isReadLater: article.isReadLater,
       notes: (article.notes ?? []).map((note) => ({
         id: note.id,
         type: note.type,

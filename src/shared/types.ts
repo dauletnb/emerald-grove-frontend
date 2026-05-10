@@ -33,8 +33,8 @@ export interface Article {
   updatedAt?: number
   syncStatus?: 'SYNCED' | 'PENDING_SYNC'
   notes?: ArticleNote[]
-  isFavorite?: boolean
-  isReadLater?: boolean
+  isFavorite: boolean
+  isReadLater: boolean
 }
 
 export interface ArticleCollection {
