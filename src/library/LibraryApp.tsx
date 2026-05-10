@@ -567,13 +567,35 @@ export function LibraryApp() {
   }
 
   async function handleToggleFavorite(article: OfflineArticle) {
-    await setArticleFavorite(article.id, !article.isFavorite)
+    const localArticle = await setArticleFavorite(article.id, !article.isFavorite)
     await refreshArticles()
+
+    try {
+      const syncedArticle = await syncArticleToServer(localArticle)
+      await saveArticleOffline(syncedArticle.article)
+      setAuthMessage('')
+    } catch (error) {
+      updateAuthMessage(error, '')
+      console.warn('Failed to sync favorite state', error)
+    } finally {
+      await refreshArticles()
+    }
   }
 
   async function handleToggleReadLater(article: OfflineArticle) {
-    await setArticleReadLater(article.id, !article.isReadLater)
+    const localArticle = await setArticleReadLater(article.id, !article.isReadLater)
     await refreshArticles()
+
+    try {
+      const syncedArticle = await syncArticleToServer(localArticle)
+      await saveArticleOffline(syncedArticle.article)
+      setAuthMessage('')
+    } catch (error) {
+      updateAuthMessage(error, '')
+      console.warn('Failed to sync read-later state', error)
+    } finally {
+      await refreshArticles()
+    }
   }
 
   async function handleCreateCollectionFromSidebar() {

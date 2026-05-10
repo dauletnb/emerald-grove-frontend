@@ -1,154 +1,121 @@
-# Этап 1: Итог реализации Backend и требования к Frontend
+## Что важно понимать для frontend после backend-этапа 1
 
-## Что реализовано в Backend
+После завершения этапа 1 backend уже хранит не только коллекции и связи, но и пользовательские article-флаги:
 
-В backend полностью реализована базовая система коллекций:
+- `isFavorite`
+- `isReadLater`
 
-- хранение пользовательских коллекций;
-- хранение связей "статья -> коллекция";
-- CRUD для коллекций;
-- online-операции добавления и удаления статьи из коллекции;
-- bulk sync коллекций;
-- bulk sync membership-связей;
-- получение списка статей коллекции;
-- получение списка коллекций для статьи.
-
-### Добавленные backend-компоненты
-
-#### Entity
-
-- `ArticleCollection`
-- `ArticleCollectionLink`
-
-#### DTO
-
-- `CollectionDto`
-- `CollectionRequestDto`
-- `CollectionSyncDto`
-- `CollectionLinkSyncDto`
-
-#### Repository
-
-- `ArticleCollectionRepository`
-- `ArticleCollectionLinkRepository`
-
-#### Service
-
-- `CollectionService`
-- `CollectionServiceImpl`
-
-#### Controller
-
-- `CollectionController`
-- дополнительный endpoint в `ArticleController` для получения коллекций статьи
-
-#### Migration
-
-- `V2__create_collections_tables.sql`
+Это меняет frontend-контракт: после успешного article sync именно backend считается актуальным источником истины по этим полям.
 
 ---
 
-## Что важно понимать Frontend
+## Критичные выводы для frontend
 
-### 1. Backend теперь является источником истины после sync
+### 1. Backend теперь canonical source of truth для article flags после sync
 
 Frontend может продолжать использовать IndexedDB:
 
 - как локальный кэш;
-- как оффлайн-слой;
-- как временное хранилище pending-изменений.
+- как offline-слой;
+- как очередь pending-изменений.
 
-Но после успешного sync актуальное состояние должно подтягиваться с backend.
+Но после успешного sync:
 
-### 2. Нельзя создавать одну и ту же коллекцию одновременно двумя путями
+- `isFavorite` и `isReadLater` должны считаться серверными полями;
+- локальное состояние нужно обновлять из ответа backend или из повторного `GET /api/articles`;
+- нельзя продолжать восстанавливать эти флаги только из локальной IndexedDB-логики, игнорируя backend.
 
-Нельзя делать такой flow:
+### 2. Контракт article sync изменился
 
-1. создать коллекцию локально;
-2. вызвать `POST /api/collections`;
-3. затем отправить эту же коллекцию через `/api/collections/sync`.
+Теперь `POST /api/articles/sync` принимает и сохраняет:
 
-Так можно получить дубли по смыслу.
+- `isFavorite`
+- `isReadLater`
 
-Правильная схема:
+И в ответе sync backend возвращает не `payload`, а поле:
 
-- online create: создать на backend и сохранить ответ в IndexedDB;
-- offline create: создать локально и потом отправить через bulk sync.
+- `article`
 
-### 3. Коллекции и membership-связи синхронизируются отдельно
+То есть frontend, который читает `response.payload`, будет расходиться с текущим backend-контрактом.
 
-Недостаточно синхронизировать только store `collections`.
+### 3. `GET /api/articles` теперь возвращает article flags
 
-Отдельно надо синхронизировать:
+Frontend больше не должен считать, что список статей с сервера не содержит этих полей.
 
-- сами коллекции;
-- membership-связи `articleExternalId <-> collectionExternalId`.
+После backend-изменений `GET /api/articles` возвращает:
 
-Если синхронизировать только коллекции, после логина на другом устройстве коллекции будут существовать, но окажутся пустыми.
+- `isFavorite`
+- `isReadLater`
+
+для каждой статьи.
+
+### 4. Коллекции и membership-связи по-прежнему синхронизируются отдельно
+
+Эта часть не изменилась:
+
+- коллекции синхронизируются отдельно;
+- membership-связи `articleExternalId <-> collectionExternalId` синхронизируются отдельно.
+
+То есть перенос article flags в backend не отменяет отдельный sync для collections/links.
 
 ---
 
-## Реально доступные endpoint'ы Backend
+## Реально доступные article endpoints backend после этапа 1
 
-Все endpoint'ы требуют авторизацию, как и остальной `/api/**`.
+Все endpoints требуют авторизацию, как и остальные `/api/**`.
 
-## Коллекции
+### `POST /api/articles/sync`
 
-### `POST /api/collections`
-Создать коллекцию.
-
-#### Request body
-
-```json
-{
-  "name": "My collection"
-}
-```
-
-#### Response
-
-`201 Created`
-
-```json
-{
-  "id": 1,
-  "externalId": "uuid",
-  "name": "My collection",
-  "createdAt": 1712160000000,
-  "updatedAt": 1712160000000,
-  "articleCount": 0,
-  "articleIds": []
-}
-```
-
-### `PUT /api/collections/{externalId}`
-Переименовать коллекцию.
+Синхронизировать одну статью.
 
 #### Request body
 
 ```json
 {
-  "name": "Renamed collection"
+  "externalId": "article-uuid-1",
+  "url": "https://example.com/article",
+  "title": "Interesting article",
+  "description": "Short description",
+  "isFavorite": true,
+  "isReadLater": false,
+  "notes": []
 }
 ```
 
 #### Response
 
-`200 OK`
+`201 Created` или `200 OK` в зависимости от `status`.
 
-Возвращает `CollectionDto`.
+```json
+{
+  "status": "CREATED",
+  "articleId": 42,
+  "article": {
+    "articleId": 42,
+    "externalId": "article-uuid-1",
+    "url": "https://example.com/article",
+    "title": "Interesting article",
+    "description": "Short description",
+    "isFavorite": true,
+    "isReadLater": false,
+    "createdAt": 1712160000000,
+    "updatedAt": 1712160005000,
+    "aiStatus": "PENDING",
+    "notes": []
+  }
+}
+```
 
-### `DELETE /api/collections/{externalId}`
-Удалить коллекцию.
+#### Важно для frontend
 
-#### Response
+- читать надо `response.article`, а не `response.payload`;
+- если статья уже есть, backend обновит `title`, `url`, `description`, `isFavorite`, `isReadLater`;
+- если `externalId` пустой, backend пытается найти статью по `url + userId`;
+- после online sync локальную статью лучше перезаписывать серверным snapshot из `response.article`.
 
-`204 No Content`
+### `GET /api/articles`
 
-Связи со статьями удаляются каскадно.
-
-### `GET /api/collections`
-Получить все коллекции пользователя.
+Получить все статьи пользователя.
 
 #### Response
 
@@ -157,70 +124,66 @@ Frontend может продолжать использовать IndexedDB:
 ```json
 [
   {
-    "externalId": "uuid-1",
-    "name": "Collection 1"
-  },
-  {
-    "externalId": "uuid-2",
-    "name": "Collection 2"
+    "articleId": 42,
+    "externalId": "article-uuid-1",
+    "url": "https://example.com/article",
+    "title": "Interesting article",
+    "description": "Short description",
+    "isFavorite": true,
+    "isReadLater": false,
+    "createdAt": 1712160000000,
+    "updatedAt": 1712160005000,
+    "aiStatus": "PENDING",
+    "notes": []
   }
 ]
 ```
 
-Важно: этот endpoint возвращает `CollectionSyncDto`, то есть без `createdAt`, `updatedAt`, `articleCount` и `articleIds`.
+#### Важно для frontend
 
-### `GET /api/collections/{externalId}`
-Получить одну коллекцию с полным payload.
+- `isFavorite` и `isReadLater` уже приходят с backend;
+- не нужно вычислять эти поля только локально поверх server response;
+- после sync лучше делать повторный pull server state, если есть риск silent skip или частичного расхождения в других сущностях.
 
-#### Response
+### `DELETE /api/articles/{externalId}`
 
-`200 OK`
-
-Возвращает `CollectionDto`, включая:
-
-- `id`
-- `externalId`
-- `name`
-- `createdAt`
-- `updatedAt`
-- `articleCount`
-- `articleIds`
-
----
-
-## Membership-операции
-
-### `POST /api/collections/{collectionExternalId}/articles/{articleExternalId}`
-Добавить статью в коллекцию.
-
-#### Response
-
-`201 Created`
-
-#### Поведение
-
-- если связь уже существует, backend не падает и не создает дубль;
-- операция идемпотентна.
-
-### `DELETE /api/collections/{collectionExternalId}/articles/{articleExternalId}`
-Удалить статью из коллекции.
+Удалить статью.
 
 #### Response
 
 `204 No Content`
 
-### `GET /api/collections/{externalId}/articles`
-Получить список `articleExternalId` внутри коллекции.
+### `DELETE /api/articles/{externalId}/notes/{noteId}`
+
+Удалить заметку статьи.
+
+#### Response
+
+`204 No Content`
+
+### `GET /api/articles/{externalId}/ai`
+
+Получить AI-результат статьи.
 
 #### Response
 
 `200 OK`
 
-```json
-["article-1", "article-2"]
-```
+Возвращает:
+
+- `aiStatus`
+- `content`
+
+### `POST /api/articles/{externalId}/ai/retry`
+
+Повторить AI-анализ.
+
+#### Response
+
+`202 Accepted`
 
 ### `GET /api/articles/{articleExternalId}/collections`
+
 Получить список `collectionExternalId`, в которые входит статья.
 
 #### Response
@@ -233,79 +196,84 @@ Frontend может продолжать использовать IndexedDB:
 
 ---
 
-## Bulk sync endpoint'ы
+## Какие структуры должен поддерживать frontend
 
-## `POST /api/collections/sync`
-Массовый sync коллекций из локального состояния frontend.
+### Article
 
-### Request body
+После backend-этапа 1 frontend-модель статьи должна быть совместима как минимум с таким shape:
 
-```json
-[
-  {
-    "externalId": "collection-uuid-1",
-    "name": "Collection 1"
-  },
-  {
-    "externalId": "collection-uuid-2",
-    "name": "Collection 2"
-  }
-]
+```ts
+type Article = {
+  id: string
+  url: string
+  title: string
+  description?: string
+  isFavorite: boolean
+  isReadLater: boolean
+  createdAt?: number
+  updatedAt?: number
+  aiStatus?: string
+  notes: ArticleNote[]
+}
 ```
 
-### Response
+Где:
 
-`200 OK`
+- локальный `id` должен совпадать с backend `externalId`;
+- `isFavorite` и `isReadLater` должны участвовать и в локальном store, и в sync DTO;
+- после sync эти поля должны обновляться серверным значением.
 
-### Реальное поведение backend
+### Article sync request
 
-- если коллекция с таким `externalId` уже есть у пользователя:
-  - новая не создается;
-  - имя обновляется, если изменилось;
-- если коллекции нет:
-  - создается новая коллекция с переданным `externalId`;
-- `createdAt` и `updatedAt` frontend не передает;
-- эти поля на сервере ведутся автоматически через auditing.
+Frontend при отправке статьи должен формировать body, совместимый с `SyncArticleRequestDto`:
 
-## `POST /api/collections/links/sync`
-Массовый sync membership-связей.
-
-### Request body
-
-```json
-[
-  {
-    "externalId": "link-uuid-1",
-    "articleExternalId": "article-uuid-1",
-    "collectionExternalId": "collection-uuid-1",
-    "clientCreatedAt": 1712160000000
-  }
-]
+```ts
+type SyncArticleRequest = {
+  externalId?: string
+  url: string
+  title: string
+  description?: string
+  isFavorite: boolean
+  isReadLater: boolean
+  notes: SyncArticleNoteRequest[]
+}
 ```
 
-### Response
+Если frontend не отправит `isFavorite` или `isReadLater`, для boolean-полей это фактически приведёт к `false`, что может случайно стереть локальное состояние пользователя.
 
-`200 OK`
+Поэтому для frontend это обязательные рабочие поля, даже если в TypeScript они раньше были опциональными.
 
-### Реальное поведение backend
+### Article sync response
 
-- если статья не найдена у пользователя:
-  - link пропускается;
-- если коллекция не найдена у пользователя:
-  - link пропускается;
-- если link уже существует:
-  - новый не создается;
-- если link не существует:
-  - создается новая запись;
-- `clientCreatedAt` необязателен.
+Frontend должен читать ответ sync так:
 
-Важно: backend сейчас не возвращает список пропущенных link'ов в ответе. Он просто пропускает их и пишет warning в лог.
+```ts
+type SyncArticleResponse = {
+  status: 'CREATED' | 'UPDATED'
+  articleId: number
+  article: {
+    articleId: number
+    externalId: string
+    url: string
+    title: string
+    description?: string
+    isFavorite: boolean
+    isReadLater: boolean
+    createdAt?: number
+    updatedAt?: number
+    aiStatus?: string
+    notes: SyncArticleNoteResponse[]
+  }
+}
+```
 
----
+Критично:
 
-## Какие структуры должен поддерживать Frontend
+- поле называется `article`;
+- не `payload`;
+- после sync именно этот snapshot лучше класть в локальное хранилище.
 
-### Коллекция
+### Collection
 
 Локально frontend по-прежнему может хранить:
 
@@ -346,144 +314,185 @@ type ArticleCollectionLink = {
 
 ---
 
-## Рекомендуемый frontend flow
+## Что нужно поправить во frontend, если он ещё живёт по старому контракту
+
+### 1. Обновить article API client
+
+Нужно поправить:
+
+- request body для `POST /api/articles/sync`;
+- response parsing для `SyncArticleResponseDto`;
+- тип ответа `GET /api/articles`.
+
+Минимально:
+
+- добавь в sync request поля `isFavorite` и `isReadLater`;
+- читай `response.article`, а не `response.payload`;
+- ожидай флаги в `GET /api/articles`.
+
+### 2. Убрать frontend-only источник истины для favorite/read later после sync
+
+Если сейчас frontend:
+
+- хранит `isFavorite` и `isReadLater` только в IndexedDB;
+- а после загрузки с backend восстанавливает эти поля отдельным merge;
+
+то это уже устаревшее поведение.
+
+Теперь правильнее:
+
+1. читать статьи с сервера вместе с флагами;
+2. локально кэшировать их;
+3. при изменении флага отправлять обновлённую статью в sync;
+4. после успешного sync перезаписывать локальную запись серверным snapshot.
+
+### 3. Сделать boolean-поля обязательными в frontend-модели sync
+
+Если во frontend они ещё описаны как:
+
+```ts
+isFavorite?: boolean
+isReadLater?: boolean
+```
+
+то для sync-слоя лучше перевести их в обязательные:
+
+```ts
+isFavorite: boolean
+isReadLater: boolean
+```
+
+Иначе можно незаметно отправить `false` по умолчанию там, где frontend ожидал “поле просто отсутствует”.
+
+### 4. Не смешивать старый merge-флоу с новым серверным контрактом
+
+Плохой вариант после текущих backend-изменений:
+
+1. получить статью с backend;
+2. поверх неё принудительно подмешать старые локальные `isFavorite`/`isReadLater`;
+3. считать это более правильным состоянием.
+
+Это снова ломает backend как source of truth.
+
+Если есть pending offline-изменения, их нужно синхронизировать явно, а не silently поверх server response.
+
+---
+
+## Коллекции и links: что остаётся актуальным без изменений
+
+### Коллекции
+
+- online create: `POST /api/collections`
+- online rename: `PUT /api/collections/{externalId}`
+- online delete: `DELETE /api/collections/{externalId}`
+- pull all: `GET /api/collections`
+- offline bulk sync: `POST /api/collections/sync`
+
+### Membership links
+
+- online add article to collection: `POST /api/collections/{collectionExternalId}/articles/{articleExternalId}`
+- online remove article from collection: `DELETE /api/collections/{collectionExternalId}/articles/{articleExternalId}`
+- pull collection article ids: `GET /api/collections/{externalId}/articles`
+- pull article collection ids: `GET /api/articles/{articleExternalId}/collections`
+- offline bulk sync links: `POST /api/collections/links/sync`
+
+### Ограничения, которые всё ещё остаются
+
+- нет bulk sync удаления статей;
+- нет bulk sync удаления collections/links;
+- нет conflict resolution по клиентским временным меткам;
+- после bulk sync нужен повторный pull server state;
+- skip по отсутствующим сущностям всё ещё может быть “молчаливым” для API.
+
+---
+
+## Рекомендуемый frontend flow после этапа 1
 
 ## 1. Загрузка данных при старте
 
 После логина:
 
-1. получить все коллекции через `GET /api/collections`;
-2. сохранить их в IndexedDB;
-3. для каждой коллекции вызвать `GET /api/collections/{externalId}/articles`;
-4. пересобрать локальные membership-связи;
-5. только после этого обновить UI.
+1. получить статьи через `GET /api/articles`;
+2. сохранить их в IndexedDB вместе с `isFavorite` и `isReadLater`;
+3. получить все коллекции через `GET /api/collections`;
+4. для каждой коллекции вызвать `GET /api/collections/{externalId}/articles`;
+5. пересобрать локальные membership-связи;
+6. только после этого обновить UI.
 
-Если есть pending локальные изменения:
+### Если есть pending локальные изменения
 
-1. сначала отправить локальные коллекции через `/api/collections/sync`;
-2. затем отправить локальные link'и через `/api/collections/links/sync`;
-3. затем заново стянуть актуальное состояние с backend;
-4. перезаписать локальный кэш серверным состоянием.
+1. сначала отправить pending article sync;
+2. затем отправить локальные коллекции через `/api/collections/sync`;
+3. затем отправить локальные links через `/api/collections/links/sync`;
+4. затем заново стянуть актуальное server state;
+5. перезаписать локальный кэш серверным состоянием.
 
-## 2. Online create collection
+## 2. Переключение favorite/read later online
 
 Если сеть доступна:
+
+1. локально обновить статью optimistically;
+2. отправить `POST /api/articles/sync` со всеми обязательными полями статьи, включая `isFavorite` и `isReadLater`;
+3. заменить локальную запись ответом `response.article`.
+
+## 3. Переключение favorite/read later offline
+
+Если сети нет:
+
+1. локально обновить статью;
+2. сохранить изменение в pending queue;
+3. при следующем sync отправить статью через `POST /api/articles/sync`;
+4. после успешного sync перезаписать локальную запись серверным snapshot.
+
+## 4. Online create collection
 
 1. `POST /api/collections`
 2. взять `externalId` из ответа;
 3. сохранить его как локальный `collection.id`;
 4. обновить локальный store.
 
-## 3. Offline create collection
-
-Если сети нет:
+## 5. Offline create collection
 
 1. создать локальную коллекцию;
-2. сохранить ее в pending queue;
+2. сохранить её в pending queue;
 3. при следующем sync отправить через `/api/collections/sync`.
 
-## 4. Rename collection
+---
 
-Online:
+## Что нужно сделать во frontend прямо сейчас
 
-1. `PUT /api/collections/{externalId}`
-2. обновить локальную запись ответом backend.
-
-Offline:
-
-- либо временно хранить как pending change;
-- либо на этапе 1 разрешить rename только online.
-
-## 5. Add article to collection
-
-Online:
-
-1. `POST /api/collections/{collectionExternalId}/articles/{articleExternalId}`
-2. локально обновить membership.
-
-Offline:
-
-1. создать локальный link;
-2. положить его в pending links;
-3. потом отправить через `/api/collections/links/sync`.
-
-## 6. Remove article from collection
-
-Online:
-
-1. `DELETE /api/collections/{collectionExternalId}/articles/{articleExternalId}`
-2. удалить локальный link.
-
-Offline:
-
-На текущем этапе полноценный delete-sync backend не реализован как отдельный bulk-механизм.
-
-Это значит:
-
-- online delete работает;
-- offline delete надо либо временно ограничить;
-- либо хранить отдельную очередь удалений и обрабатывать ее позже в следующем этапе.
+1. Обновить типы статьи и sync DTO под обязательные `isFavorite` и `isReadLater`.
+2. Исправить чтение ответа article sync: использовать `response.article`.
+3. Обновить маппинг `GET /api/articles`, чтобы брать флаги прямо из backend response.
+4. Убрать старую логику, где favorite/read later после sync восстанавливаются только из локального слоя.
+5. Сохранить текущую коллекционную схему sync без изменений.
 
 ---
 
-## Ограничения текущей backend-реализации
+## Backend-файлы, на которые должен ориентироваться frontend
 
-### 1. Нет bulk sync удаления
-
-Есть bulk sync на создание и дообновление состояния, но нет отдельного backend API для массовой синхронизации удалений link'ов или коллекций.
-
-### 2. Нет conflict resolution по времени
-
-Backend не использует клиентские `updatedAt` для принятия решений.
-
-Сейчас поведение такое:
-
-- коллекция с тем же `externalId` обновит `name`;
-- link с той же парой `articleExternalId + collectionExternalId` повторно не создастся;
-- delete/merge-конфликты надо отдельно продумывать на следующем этапе.
-
-### 3. `GET /api/collections` не возвращает полный payload
-
-Если frontend хочет сразу восстановить содержимое коллекций, одного `GET /api/collections` недостаточно. Нужно дополнительно запрашивать статьи коллекции.
-
-### 4. Skip по отсутствующим данным молчаливый для API
-
-Если frontend отправил link, а статья или коллекция не найдены, backend вернет `200 OK`, но конкретный link не создаст.
-
-Следовательно, frontend после sync должен обязательно делать повторный pull server state, а не считать sync успешным только по HTTP-коду.
-
----
-
-## Что нужно сделать во Frontend после этого этапа
-
-1. Добавить API-модуль для коллекций под новый backend-контракт.
-2. Развести online CRUD и offline bulk sync.
-3. Использовать backend `externalId` как основной идентификатор коллекции.
-4. Синхронизировать не только коллекции, но и membership-связи.
-5. После любого bulk sync делать повторную загрузку server state.
-6. Не использовать flow "create locally -> create on server -> sync ту же сущность еще раз".
-7. Ограничить или отдельно спроектировать offline delete до следующего этапа.
-
----
-
-## Файлы Backend, на которые должен ориентироваться Frontend
-
-- `src/main/java/com/emeraldgrove/controller/CollectionController.java`
 - `src/main/java/com/emeraldgrove/controller/ArticleController.java`
+- `src/main/java/com/emeraldgrove/dto/SyncArticleRequestDto.java`
+- `src/main/java/com/emeraldgrove/dto/SyncArticleResponseDto.java`
+- `src/main/java/com/emeraldgrove/dto/SyncArticlePayloadResponseDto.java`
+- `src/main/java/com/emeraldgrove/dto/ArticleSyncDto.java`
+- `src/main/java/com/emeraldgrove/controller/CollectionController.java`
 - `src/main/java/com/emeraldgrove/dto/CollectionDto.java`
 - `src/main/java/com/emeraldgrove/dto/CollectionRequestDto.java`
 - `src/main/java/com/emeraldgrove/dto/CollectionSyncDto.java`
 - `src/main/java/com/emeraldgrove/dto/CollectionLinkSyncDto.java`
+- `src/main/java/com/emeraldgrove/service/impl/ArticleServiceImpl.java`
 - `src/main/java/com/emeraldgrove/service/impl/CollectionServiceImpl.java`
 
 ---
 
 ## Краткий итог
 
-Backend этапа 1 готов для работы коллекций и синхронизации, но frontend должен подстроиться под несколько важных правил:
+После backend-этапа 1 frontend должен считать, что:
 
-- backend теперь хранит canonical state коллекций;
-- `externalId` является главным идентификатором для sync;
-- membership-связи синхронизируются отдельно;
-- после bulk sync нужно заново перечитывать серверное состояние;
-- offline delete пока не доведен до полноценного backend sync-механизма.
+- backend уже хранит `isFavorite` и `isReadLater`;
+- `POST /api/articles/sync` должен отправлять эти поля;
+- ответ sync читается из `response.article`;
+- `GET /api/articles` уже возвращает эти флаги;
+- локальный offline-слой остаётся, но после sync серверное состояние приоритетнее;
+- collections и membership-links продолжают жить по отдельному sync-потоку.
