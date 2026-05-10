@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AiPanel } from '../components/AiPanel'
 import { SafeNoteRenderer } from '../components/SafeNoteRenderer'
 import { ApiAuthError } from '../shared/api/auth'
+import {
+  addArticleToCollectionOnServer,
+  createCollectionOnServer,
+  fetchCollectionsSnapshotFromServer,
+  removeArticleFromCollectionOnServer,
+  syncCollectionLinksToServer,
+  syncCollectionsToServer,
+} from '../shared/api/collections'
 import { deleteArticleFromServer, deleteNoteFromServer, fetchArticleAI, fetchArticlesFromServer, syncArticleToServer } from '../shared/api/articles'
 import type { AIResult, AIStatus } from '../shared/types'
 import {
@@ -14,7 +22,11 @@ import {
   getArticleCollectionIds,
   getAllArticles,
   getCollectionArticleIds,
+  getPendingCollectionLinksForSync,
+  getPendingCollectionsForSync,
   removeArticleFromCollection,
+  replaceCollectionsState,
+  saveCollectionOffline,
   saveArticleOffline,
   saveArticlesOffline,
   setArticleFavorite,
@@ -240,6 +252,7 @@ export function LibraryApp() {
   const [aiCache, setAiCache] = useState<Record<string, { status: AIStatus; result?: AIResult }>>({})
   const [authMessage, setAuthMessage] = useState('')
   const aiInitiated = useRef<Set<string>>(new Set())
+  const collectionsSyncRef = useRef<Promise<void> | null>(null)
 
   function updateAuthMessage(error: unknown, fallback: string) {
     if (error instanceof ApiAuthError) {
@@ -285,54 +298,71 @@ export function LibraryApp() {
     await Promise.all([refreshArticles(), refreshCollections()])
   }
 
+  async function syncCollectionsFromServer() {
+    const snapshot = await fetchCollectionsSnapshotFromServer()
+    await replaceCollectionsState(snapshot.collections, snapshot.links)
+  }
+
+  async function syncPendingCollections() {
+    if (collectionsSyncRef.current) {
+      await collectionsSyncRef.current
+      return
+    }
+
+    const syncPromise = (async () => {
+      const pendingCollections = await getPendingCollectionsForSync()
+
+      if (pendingCollections.length > 0) {
+        await syncCollectionsToServer(pendingCollections)
+      }
+
+      const pendingLinks = await getPendingCollectionLinksForSync()
+
+      if (pendingLinks.length > 0) {
+        await syncCollectionLinksToServer(pendingLinks)
+      }
+
+      await syncCollectionsFromServer()
+    })()
+
+    collectionsSyncRef.current = syncPromise
+
+    try {
+      await syncPromise
+    } finally {
+      collectionsSyncRef.current = null
+    }
+  }
+
+  async function syncArticlesWithServer() {
+    const localArticles = await getAllArticles()
+
+    for (const article of localArticles.filter((item) => item.syncStatus === 'PENDING_SYNC')) {
+      const synced = await syncArticleToServer(article)
+      await saveArticleOffline(synced.article)
+    }
+
+    const remoteArticles = await fetchArticlesFromServer()
+    await saveArticlesOffline(remoteArticles)
+  }
+
   useEffect(() => {
     let cancelled = false
 
     const startLoadingLibrary = async () => {
-      const data = await getAllArticles()
-      const savedCollections = await getAllCollections()
-      const nextCollectionArticleIds: Record<string, string[]> = {}
-
-      for (const collection of savedCollections) {
-        nextCollectionArticleIds[collection.id] = await getCollectionArticleIds(collection.id)
-      }
-
-      const nextArticleCollectionIds: Record<string, string[]> = {}
-
-      for (const article of data) {
-        nextArticleCollectionIds[article.id] = await getArticleCollectionIds(article.id)
-      }
-
-      if (!cancelled) {
-        setArticles(data)
-        setCollections(savedCollections)
-        setCollectionArticleIds(nextCollectionArticleIds)
-        setArticleCollectionIds(nextArticleCollectionIds)
-      }
+      await refreshLibraryState()
 
       try {
-        const localArticles = await getAllArticles()
-
-        for (const article of localArticles.filter((item) => item.syncStatus === 'PENDING_SYNC')) {
-          const synced = await syncArticleToServer(article)
-          await saveArticleOffline(synced.article)
-        }
-
-        const remoteArticles = await fetchArticlesFromServer()
-        await saveArticlesOffline(remoteArticles)
+        await syncArticlesWithServer()
+        await syncPendingCollections()
         setAuthMessage('')
-
-        if (!cancelled) {
-          const refreshedArticles = await getAllArticles()
-          setArticles(refreshedArticles)
-        }
       } catch (error) {
         updateAuthMessage(error, '')
         console.warn('Library sync failed', error)
       }
 
       if (!cancelled) {
-        await refreshCollections()
+        await refreshLibraryState()
       }
     }
 
@@ -550,32 +580,67 @@ export function LibraryApp() {
     const name = newCollectionName.trim()
 
     if (!name) {
-      setCollectionError('Добавьте название для пользовательского раздела.')
+      setCollectionError('Enter a collection name first.')
       return
     }
 
     try {
-      await createCollection(name)
+      const serverCollection = await createCollectionOnServer(name)
+      await saveCollectionOffline(serverCollection)
       setNewCollectionName('')
       setCollectionError('')
       setSidebarSectionSearchQuery('')
       await refreshCollections()
     } catch (error) {
-      setCollectionError(error instanceof Error ? error.message : 'Не удалось создать пользовательский раздел.')
+      if (updateAuthMessage(error, '')) {
+        setCollectionError(error instanceof Error ? error.message : 'Please sign in again.')
+        return
+      }
+
+      try {
+        await createCollection(name, { syncStatus: 'PENDING_SYNC' })
+        setNewCollectionName('')
+        setCollectionError('Collection saved locally and will sync when the server is reachable.')
+        setSidebarSectionSearchQuery('')
+        await refreshCollections()
+      } catch (localError) {
+        setCollectionError(localError instanceof Error ? localError.message : 'Failed to create collection.')
+      }
     }
   }
 
   async function handleToggleCollectionMembership(articleId: string, collectionId: string) {
     const collectionIds = articleCollectionIds[articleId] ?? []
 
-    if (collectionIds.includes(collectionId)) {
-      await removeArticleFromCollection(articleId, collectionId)
-    } else {
-      await addArticleToCollection(articleId, collectionId)
-    }
+    try {
+      if (collectionIds.includes(collectionId)) {
+        await removeArticleFromCollectionOnServer(collectionId, articleId)
+        await removeArticleFromCollection(articleId, collectionId, { syncStatus: 'SYNCED' })
+      } else {
+        await addArticleToCollectionOnServer(collectionId, articleId)
+        await addArticleToCollection(articleId, collectionId, { syncStatus: 'SYNCED' })
+      }
 
-    await refreshCollections()
+      setCollectionError('')
+      await refreshCollections()
+    } catch (error) {
+      if (updateAuthMessage(error, '')) {
+        setCollectionError(error instanceof Error ? error.message : 'Please sign in again.')
+        return
+      }
+
+      if (collectionIds.includes(collectionId)) {
+        setCollectionError('Offline removal is not supported yet.')
+        await refreshCollections()
+        return
+      }
+
+      await addArticleToCollection(articleId, collectionId, { syncStatus: 'PENDING_SYNC' })
+      setCollectionError('Membership saved locally and will sync later.')
+      await refreshCollections()
+    }
   }
+
 
   const systemSectionCounts = useMemo(
     () => ({
