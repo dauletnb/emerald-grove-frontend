@@ -42,6 +42,7 @@ export interface ArticleCollection {
   name: string
   createdAt: number
   updatedAt: number
+  syncStatus?: 'SYNCED' | 'PENDING_SYNC'
 }
 
 export interface ArticleCollectionLink {
@@ -49,6 +50,7 @@ export interface ArticleCollectionLink {
   articleId: string
   collectionId: string
   createdAt: number
+  syncStatus?: 'SYNCED' | 'PENDING_SYNC'
 }
 
 export type LibrarySection =

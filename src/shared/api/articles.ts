@@ -46,7 +46,7 @@ async function buildHeaders(): Promise<HeadersInit> {
   }
 }
 
-async function authFetch(url: string, options: RequestInit): Promise<Response> {
+export async function authFetch(url: string, options: RequestInit): Promise<Response> {
   const response = await fetch(url, {
     ...options,
     headers: await buildHeaders(),

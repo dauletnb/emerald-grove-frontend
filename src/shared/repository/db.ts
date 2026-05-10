@@ -1,4 +1,8 @@
 import { openDB, IDBPDatabase } from 'idb'
+import {
+  toPendingCollectionLinksSyncPayload,
+  toPendingCollectionsSyncPayload,
+} from '../collections/syncHelpers'
 import type { ArticleCollection, ArticleCollectionLink, ArticleNote, NoteType } from '../types'
 
 export interface OfflineArticle {
@@ -12,6 +16,20 @@ export interface OfflineArticle {
   notes: ArticleNote[]
   isFavorite: boolean
   isReadLater: boolean
+}
+
+export type CollectionSyncStatus = 'SYNCED' | 'PENDING_SYNC'
+
+export type PendingCollectionSyncItem = {
+  externalId: string
+  name: string
+}
+
+export type PendingCollectionLinkSyncItem = {
+  externalId: string
+  articleExternalId: string
+  collectionExternalId: string
+  clientCreatedAt: number
 }
 
 function normalizeArticle(article: OfflineArticle): OfflineArticle {
@@ -197,10 +215,29 @@ function normalizeCollection(collection: ArticleCollection): ArticleCollection {
     ...collection,
     createdAt: collection.createdAt ?? Date.now(),
     updatedAt: collection.updatedAt ?? collection.createdAt ?? Date.now(),
+    syncStatus: collection.syncStatus ?? 'SYNCED',
   }
 }
 
-export async function createCollection(name: string): Promise<ArticleCollection> {
+function normalizeCollectionLink(link: ArticleCollectionLink): ArticleCollectionLink {
+  return {
+    ...link,
+    createdAt: link.createdAt ?? Date.now(),
+    syncStatus: link.syncStatus ?? 'SYNCED',
+  }
+}
+
+export async function saveCollectionOffline(collection: ArticleCollection): Promise<ArticleCollection> {
+  const normalizedCollection = normalizeCollection(collection)
+  const db = await dbPromise
+  await db.put('collections', normalizedCollection)
+  return normalizedCollection
+}
+
+export async function createCollection(
+  name: string,
+  options?: { id?: string; syncStatus?: CollectionSyncStatus },
+): Promise<ArticleCollection> {
   const trimmedName = name.trim()
 
   if (!trimmedName) {
@@ -209,15 +246,14 @@ export async function createCollection(name: string): Promise<ArticleCollection>
 
   const now = Date.now()
   const collection: ArticleCollection = {
-    id: crypto.randomUUID(),
+    id: options?.id ?? crypto.randomUUID(),
     name: trimmedName,
     createdAt: now,
     updatedAt: now,
+    syncStatus: options?.syncStatus ?? 'PENDING_SYNC',
   }
 
-  const db = await dbPromise
-  await db.put('collections', collection)
-  return collection
+  return saveCollectionOffline(collection)
 }
 
 export async function renameCollection(collectionId: string, name: string): Promise<ArticleCollection> {
@@ -238,6 +274,7 @@ export async function renameCollection(collectionId: string, name: string): Prom
     ...existing,
     name: trimmedName,
     updatedAt: Date.now(),
+    syncStatus: 'PENDING_SYNC',
   })
 
   await db.put('collections', nextCollection)
@@ -263,7 +300,57 @@ export async function getAllCollections(): Promise<ArticleCollection[]> {
   return collections.sort((left, right) => left.name.localeCompare(right.name))
 }
 
-export async function addArticleToCollection(articleId: string, collectionId: string): Promise<void> {
+export async function replaceCollectionsState(
+  collections: ArticleCollection[],
+  links: ArticleCollectionLink[],
+): Promise<void> {
+  const db = await dbPromise
+  const tx = db.transaction(['articleCollectionLinks', 'collections'], 'readwrite')
+  const collectionStore = tx.objectStore('collections')
+  const linkStore = tx.objectStore('articleCollectionLinks')
+
+  await collectionStore.clear()
+  await linkStore.clear()
+
+  for (const collection of collections) {
+    await collectionStore.put(
+      normalizeCollection({
+        ...collection,
+        syncStatus: 'SYNCED',
+      }),
+    )
+  }
+
+  for (const link of links) {
+    await linkStore.put(
+      normalizeCollectionLink({
+        ...link,
+        syncStatus: 'SYNCED',
+      }),
+    )
+  }
+
+  await tx.done
+}
+
+export async function getPendingCollectionsForSync(): Promise<PendingCollectionSyncItem[]> {
+  const collections = await getAllCollections()
+  return toPendingCollectionsSyncPayload(collections)
+}
+
+export async function getPendingCollectionLinksForSync(): Promise<PendingCollectionLinkSyncItem[]> {
+  const db = await dbPromise
+  const links = ((await db.getAll('articleCollectionLinks')) as ArticleCollectionLink[])
+    .map(normalizeCollectionLink)
+
+  return toPendingCollectionLinksSyncPayload(links)
+}
+
+export async function addArticleToCollection(
+  articleId: string,
+  collectionId: string,
+  options?: { syncStatus?: CollectionSyncStatus; linkId?: string },
+): Promise<void> {
   const db = await dbPromise
   const tx = db.transaction(['articleCollectionLinks', 'collections'], 'readwrite')
   const linkStore = tx.objectStore('articleCollectionLinks')
@@ -271,14 +358,16 @@ export async function addArticleToCollection(articleId: string, collectionId: st
     | ArticleCollectionLink
     | undefined
 
-  if (!existingLink) {
-    await linkStore.put({
-      id: crypto.randomUUID(),
+  await linkStore.put(
+    normalizeCollectionLink({
+      ...(existingLink ?? {}),
+      id: existingLink?.id ?? options?.linkId ?? crypto.randomUUID(),
       articleId,
       collectionId,
-      createdAt: Date.now(),
-    } satisfies ArticleCollectionLink)
-  }
+      createdAt: existingLink?.createdAt ?? Date.now(),
+      syncStatus: options?.syncStatus ?? existingLink?.syncStatus ?? 'PENDING_SYNC',
+    }),
+  )
 
   const collectionStore = tx.objectStore('collections')
   const collection = (await collectionStore.get(collectionId)) as ArticleCollection | undefined
@@ -287,13 +376,18 @@ export async function addArticleToCollection(articleId: string, collectionId: st
     await collectionStore.put({
       ...normalizeCollection(collection),
       updatedAt: Date.now(),
+      syncStatus: options?.syncStatus === 'SYNCED' ? collection.syncStatus : 'PENDING_SYNC',
     })
   }
 
   await tx.done
 }
 
-export async function removeArticleFromCollection(articleId: string, collectionId: string): Promise<void> {
+export async function removeArticleFromCollection(
+  articleId: string,
+  collectionId: string,
+  options?: { syncStatus?: CollectionSyncStatus },
+): Promise<void> {
   const db = await dbPromise
   const tx = db.transaction(['articleCollectionLinks', 'collections'], 'readwrite')
   const linkStore = tx.objectStore('articleCollectionLinks')
@@ -312,6 +406,7 @@ export async function removeArticleFromCollection(articleId: string, collectionI
     await collectionStore.put({
       ...normalizeCollection(collection),
       updatedAt: Date.now(),
+      syncStatus: options?.syncStatus ?? 'PENDING_SYNC',
     })
   }
 
