@@ -2,6 +2,7 @@ import { API_BASE_URL } from '@/config'
 import { ApiAuthError } from './auth'
 import { authFetch } from './articles'
 import type { ArticleCollection, ArticleCollectionLink } from '../types'
+import type { BatchSyncResponse } from './articles'
 import {
   buildCollectionLinksSnapshot,
   toOfflineCollection,
@@ -19,6 +20,21 @@ function assertOk(response: Response, action: string): void {
   }
 
   throw new Error(`${action} failed with status ${response.status}`)
+}
+
+export type CollectionLinkSyncResult = {
+  externalId: string
+  articleExternalId: string
+  collectionExternalId: string
+  status: 'APPLIED' | 'SKIPPED'
+  reason?: string | null
+}
+
+export type CollectionLinkBatchSyncResponse = {
+  appliedCount: number
+  skippedCount: number
+  applied: CollectionLinkSyncResult[]
+  skipped: CollectionLinkSyncResult[]
 }
 
 export async function createCollectionOnServer(name: string): Promise<ArticleCollection> {
@@ -98,13 +114,14 @@ export async function removeArticleFromCollectionOnServer(
 
 export async function syncCollectionsToServer(
   collections: Array<{ externalId: string; name: string }>,
-): Promise<void> {
+): Promise<BatchSyncResponse> {
   const response = await authFetch(`${API_BASE_URL}/api/collections/sync`, {
     method: 'POST',
     body: JSON.stringify(collections),
   })
 
   assertOk(response, 'Sync collections')
+  return (await response.json()) as BatchSyncResponse
 }
 
 export async function syncCollectionLinksToServer(
@@ -114,13 +131,42 @@ export async function syncCollectionLinksToServer(
     collectionExternalId: string
     clientCreatedAt: number
   }>,
-): Promise<void> {
+): Promise<CollectionLinkBatchSyncResponse> {
   const response = await authFetch(`${API_BASE_URL}/api/collections/links/sync`, {
     method: 'POST',
     body: JSON.stringify(links),
   })
 
   assertOk(response, 'Sync collection links')
+  return (await response.json()) as CollectionLinkBatchSyncResponse
+}
+
+export async function syncDeletedCollectionsToServer(
+  collectionExternalIds: string[],
+): Promise<BatchSyncResponse> {
+  const response = await authFetch(`${API_BASE_URL}/api/collections/sync/deletions`, {
+    method: 'POST',
+    body: JSON.stringify({ externalIds: collectionExternalIds }),
+  })
+
+  assertOk(response, 'Sync deleted collections')
+  return (await response.json()) as BatchSyncResponse
+}
+
+export async function syncDeletedCollectionLinksToServer(
+  links: Array<{
+    externalId: string
+    articleExternalId: string
+    collectionExternalId: string
+  }>,
+): Promise<CollectionLinkBatchSyncResponse> {
+  const response = await authFetch(`${API_BASE_URL}/api/collections/links/sync/deletions`, {
+    method: 'POST',
+    body: JSON.stringify(links),
+  })
+
+  assertOk(response, 'Sync deleted collection links')
+  return (await response.json()) as CollectionLinkBatchSyncResponse
 }
 
 export async function fetchCollectionsSnapshotFromServer(): Promise<{

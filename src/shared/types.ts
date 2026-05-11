@@ -32,6 +32,7 @@ export interface Article {
   createdAt?: number
   updatedAt?: number
   syncStatus?: 'SYNCED' | 'PENDING_SYNC'
+  serverPersisted?: boolean
   notes?: ArticleNote[]
   isFavorite: boolean
   isReadLater: boolean
@@ -43,6 +44,7 @@ export interface ArticleCollection {
   createdAt: number
   updatedAt: number
   syncStatus?: 'SYNCED' | 'PENDING_SYNC'
+  serverPersisted?: boolean
 }
 
 export interface ArticleCollectionLink {
@@ -51,6 +53,7 @@ export interface ArticleCollectionLink {
   collectionId: string
   createdAt: number
   syncStatus?: 'SYNCED' | 'PENDING_SYNC'
+  serverPersisted?: boolean
 }
 
 export type LibrarySection =

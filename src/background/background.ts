@@ -80,6 +80,7 @@ async function handleSaveArticle(
       createdAt: Date.now(),
       updatedAt: Date.now(),
       syncStatus: 'PENDING_SYNC',
+      serverPersisted: false,
       notes: article.notes ?? [],
       isFavorite: article.isFavorite,
       isReadLater: article.isReadLater,
