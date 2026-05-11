@@ -30,6 +30,19 @@ type SyncArticleApiResponse = {
   articleId?: number
 }
 
+export type BatchSyncItemResult = {
+  externalId: string
+  status: 'APPLIED' | 'SKIPPED'
+  reason?: string | null
+}
+
+export type BatchSyncResponse = {
+  appliedCount: number
+  skippedCount: number
+  applied: BatchSyncItemResult[]
+  skipped: BatchSyncItemResult[]
+}
+
 async function getValidAccessToken(): Promise<string> {
   const session = await getAuthSession()
 
@@ -85,6 +98,7 @@ export function toOfflineArticle(remoteArticle: RemoteArticle): OfflineArticle {
     createdAt: remoteArticle.createdAt ?? Date.now(),
     updatedAt: remoteArticle.updatedAt ?? remoteArticle.createdAt ?? Date.now(),
     syncStatus: 'SYNCED',
+    serverPersisted: true,
     notes: (remoteArticle.notes ?? []).map((note) => ({
       id: note.id,
       type: note.type,
@@ -139,6 +153,7 @@ export async function syncArticleToServer(article: Article): Promise<{
           createdAt: article.createdAt ?? Date.now(),
           updatedAt: Date.now(),
           syncStatus: 'SYNCED' as const,
+          serverPersisted: true,
           notes: article.notes ?? [],
           isFavorite: article.isFavorite ?? false,
           isReadLater: article.isReadLater ?? false,
@@ -162,6 +177,22 @@ export async function deleteArticleFromServer(articleExternalId: string): Promis
     }
     throw new Error(`Delete article failed with status ${response.status}`)
   }
+}
+
+export async function syncDeletedArticlesToServer(articleExternalIds: string[]): Promise<BatchSyncResponse> {
+  const response = await authFetch(`${API_BASE_URL}/api/articles/sync/deletions`, {
+    method: 'POST',
+    body: JSON.stringify({ externalIds: articleExternalIds }),
+  })
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiAuthError('РЎРµСЂРІРµСЂ РѕС‚РєР»РѕРЅРёР» Р·Р°РїСЂРѕСЃ. Р’РѕР№РґРёС‚Рµ СЃРЅРѕРІР°.', response.status)
+    }
+    throw new Error(`Delete article sync failed with status ${response.status}`)
+  }
+
+  return (await response.json()) as BatchSyncResponse
 }
 
 export async function deleteNoteFromServer(articleExternalId: string, noteExternalId: string): Promise<void> {

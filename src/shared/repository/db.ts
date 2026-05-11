@@ -13,6 +13,7 @@ export interface OfflineArticle {
   createdAt: number
   updatedAt?: number
   syncStatus: 'SYNCED' | 'PENDING_SYNC'
+  serverPersisted: boolean
   notes: ArticleNote[]
   isFavorite: boolean
   isReadLater: boolean
@@ -32,19 +33,31 @@ export type PendingCollectionLinkSyncItem = {
   clientCreatedAt: number
 }
 
+export type PendingCollectionLinkDeletionItem = {
+  externalId: string
+  articleExternalId: string
+  collectionExternalId: string
+}
+
+type DeletedExternalIdItem = {
+  externalId: string
+}
+
 function normalizeArticle(article: OfflineArticle): OfflineArticle {
   return {
     ...article,
     description: article.description ?? '',
     createdAt: article.createdAt ?? Date.now(),
     updatedAt: article.updatedAt ?? article.createdAt ?? Date.now(),
+    syncStatus: article.syncStatus ?? 'SYNCED',
+    serverPersisted: article.serverPersisted ?? article.syncStatus === 'SYNCED',
     notes: article.notes ?? [],
     isFavorite: article.isFavorite ?? false,
     isReadLater: article.isReadLater ?? false,
   }
 }
 
-export const dbPromise = openDB('emerald-grove-db', 2, {
+export const dbPromise = openDB('emerald-grove-db', 3, {
   upgrade(db: IDBPDatabase) {
     if (!db.objectStoreNames.contains('articles')) {
       db.createObjectStore('articles', { keyPath: 'id' })
@@ -60,6 +73,18 @@ export const dbPromise = openDB('emerald-grove-db', 2, {
       linkStore.createIndex('by_collectionId', 'collectionId', { unique: false })
       linkStore.createIndex('by_article_collection', ['articleId', 'collectionId'], { unique: true })
     }
+
+    if (!db.objectStoreNames.contains('deletedArticles')) {
+      db.createObjectStore('deletedArticles', { keyPath: 'externalId' })
+    }
+
+    if (!db.objectStoreNames.contains('deletedCollections')) {
+      db.createObjectStore('deletedCollections', { keyPath: 'externalId' })
+    }
+
+    if (!db.objectStoreNames.contains('deletedArticleCollectionLinks')) {
+      db.createObjectStore('deletedArticleCollectionLinks', { keyPath: 'externalId' })
+    }
   },
 })
 
@@ -68,6 +93,47 @@ async function findMatchingArticle(article: Pick<OfflineArticle, 'id' | 'url'>):
   const articles = await db.getAll('articles')
 
   return articles.find((storedArticle) => storedArticle.id === article.id || storedArticle.url === article.url)
+}
+
+async function queueDeletedExternalId(storeName: 'deletedArticles' | 'deletedCollections', externalId: string): Promise<void> {
+  const db = await dbPromise
+  await db.put(storeName, { externalId } satisfies DeletedExternalIdItem)
+}
+
+async function clearDeletedExternalIds(
+  storeName: 'deletedArticles' | 'deletedCollections',
+  externalIds: string[],
+): Promise<void> {
+  if (externalIds.length === 0) {
+    return
+  }
+
+  const db = await dbPromise
+  const tx = db.transaction(storeName, 'readwrite')
+
+  for (const externalId of externalIds) {
+    await tx.objectStore(storeName).delete(externalId)
+  }
+
+  await tx.done
+}
+
+async function clearMatchingCollectionLinkDeletions(
+  articleExternalId: string,
+  collectionExternalId: string,
+): Promise<void> {
+  const db = await dbPromise
+  const tx = db.transaction('deletedArticleCollectionLinks', 'readwrite')
+  const store = tx.objectStore('deletedArticleCollectionLinks')
+  const items = (await store.getAll()) as PendingCollectionLinkDeletionItem[]
+
+  for (const item of items) {
+    if (item.articleExternalId === articleExternalId && item.collectionExternalId === collectionExternalId) {
+      await store.delete(item.externalId)
+    }
+  }
+
+  await tx.done
 }
 
 export async function saveArticleOffline(article: OfflineArticle): Promise<OfflineArticle> {
@@ -88,6 +154,7 @@ export async function saveArticleOffline(article: OfflineArticle): Promise<Offli
   }
 
   await db.put('articles', normalizedArticle)
+  await db.delete('deletedArticles', normalizedArticle.id)
   return normalizedArticle
 }
 
@@ -114,6 +181,7 @@ export async function getArticleById(id: string): Promise<OfflineArticle | undef
 
 export async function deleteArticle(id: string): Promise<void> {
   const db = await dbPromise
+  const article = await getArticleById(id)
   await db.delete('articles', id)
 
   const linkStore = db.transaction('articleCollectionLinks', 'readwrite').objectStore('articleCollectionLinks')
@@ -122,6 +190,20 @@ export async function deleteArticle(id: string): Promise<void> {
   for (const link of links) {
     await linkStore.delete(link.id)
   }
+
+  if (article?.serverPersisted) {
+    await queueDeletedExternalId('deletedArticles', id)
+  }
+}
+
+export async function getPendingArticleDeletions(): Promise<string[]> {
+  const db = await dbPromise
+  const items = (await db.getAll('deletedArticles')) as DeletedExternalIdItem[]
+  return items.map((item) => item.externalId)
+}
+
+export async function clearPendingArticleDeletions(externalIds: string[]): Promise<void> {
+  await clearDeletedExternalIds('deletedArticles', externalIds)
 }
 
 export async function markArticleSyncStatus(
@@ -218,6 +300,7 @@ function normalizeCollection(collection: ArticleCollection): ArticleCollection {
     createdAt: collection.createdAt ?? Date.now(),
     updatedAt: collection.updatedAt ?? collection.createdAt ?? Date.now(),
     syncStatus: collection.syncStatus ?? 'SYNCED',
+    serverPersisted: collection.serverPersisted ?? collection.syncStatus === 'SYNCED',
   }
 }
 
@@ -226,6 +309,7 @@ function normalizeCollectionLink(link: ArticleCollectionLink): ArticleCollection
     ...link,
     createdAt: link.createdAt ?? Date.now(),
     syncStatus: link.syncStatus ?? 'SYNCED',
+    serverPersisted: link.serverPersisted ?? link.syncStatus === 'SYNCED',
   }
 }
 
@@ -233,6 +317,7 @@ export async function saveCollectionOffline(collection: ArticleCollection): Prom
   const normalizedCollection = normalizeCollection(collection)
   const db = await dbPromise
   await db.put('collections', normalizedCollection)
+  await db.delete('deletedCollections', normalizedCollection.id)
   return normalizedCollection
 }
 
@@ -253,6 +338,7 @@ export async function createCollection(
     createdAt: now,
     updatedAt: now,
     syncStatus: options?.syncStatus ?? 'PENDING_SYNC',
+    serverPersisted: options?.syncStatus === 'SYNCED',
   }
 
   return saveCollectionOffline(collection)
@@ -285,6 +371,7 @@ export async function renameCollection(collectionId: string, name: string): Prom
 
 export async function deleteCollection(collectionId: string): Promise<void> {
   const db = await dbPromise
+  const collection = (await db.get('collections', collectionId)) as ArticleCollection | undefined
   await db.delete('collections', collectionId)
 
   const linkStore = db.transaction('articleCollectionLinks', 'readwrite').objectStore('articleCollectionLinks')
@@ -293,6 +380,20 @@ export async function deleteCollection(collectionId: string): Promise<void> {
   for (const link of links) {
     await linkStore.delete(link.id)
   }
+
+  if (collection?.serverPersisted) {
+    await queueDeletedExternalId('deletedCollections', collectionId)
+  }
+}
+
+export async function getPendingCollectionDeletions(): Promise<string[]> {
+  const db = await dbPromise
+  const items = (await db.getAll('deletedCollections')) as DeletedExternalIdItem[]
+  return items.map((item) => item.externalId)
+}
+
+export async function clearPendingCollectionDeletions(externalIds: string[]): Promise<void> {
+  await clearDeletedExternalIds('deletedCollections', externalIds)
 }
 
 export async function getAllCollections(): Promise<ArticleCollection[]> {
@@ -319,6 +420,7 @@ export async function replaceCollectionsState(
       normalizeCollection({
         ...collection,
         syncStatus: 'SYNCED',
+        serverPersisted: true,
       }),
     )
   }
@@ -328,6 +430,7 @@ export async function replaceCollectionsState(
       normalizeCollectionLink({
         ...link,
         syncStatus: 'SYNCED',
+        serverPersisted: true,
       }),
     )
   }
@@ -346,6 +449,31 @@ export async function getPendingCollectionLinksForSync(): Promise<PendingCollect
     .map(normalizeCollectionLink)
 
   return toPendingCollectionLinksSyncPayload(links)
+}
+
+export async function getPendingCollectionLinkDeletions(): Promise<PendingCollectionLinkDeletionItem[]> {
+  const db = await dbPromise
+  return (await db.getAll('deletedArticleCollectionLinks')) as PendingCollectionLinkDeletionItem[]
+}
+
+export async function clearPendingCollectionLinkDeletions(externalIds: string[]): Promise<void> {
+  if (externalIds.length === 0) {
+    return
+  }
+
+  const db = await dbPromise
+  const tx = db.transaction('deletedArticleCollectionLinks', 'readwrite')
+
+  for (const externalId of externalIds) {
+    await tx.objectStore('deletedArticleCollectionLinks').delete(externalId)
+  }
+
+  await tx.done
+}
+
+async function queueCollectionLinkDeletion(link: PendingCollectionLinkDeletionItem): Promise<void> {
+  const db = await dbPromise
+  await db.put('deletedArticleCollectionLinks', link)
 }
 
 export async function addArticleToCollection(
@@ -368,6 +496,7 @@ export async function addArticleToCollection(
       collectionId,
       createdAt: existingLink?.createdAt ?? Date.now(),
       syncStatus: options?.syncStatus ?? existingLink?.syncStatus ?? 'PENDING_SYNC',
+      serverPersisted: options?.syncStatus === 'SYNCED' || existingLink?.serverPersisted === true,
     }),
   )
 
@@ -383,6 +512,7 @@ export async function addArticleToCollection(
   }
 
   await tx.done
+  await clearMatchingCollectionLinkDeletions(articleId, collectionId)
 }
 
 export async function removeArticleFromCollection(
@@ -413,6 +543,14 @@ export async function removeArticleFromCollection(
   }
 
   await tx.done
+
+  if (existingLink?.serverPersisted && options?.syncStatus !== 'SYNCED') {
+    await queueCollectionLinkDeletion({
+      externalId: existingLink.id,
+      articleExternalId: articleId,
+      collectionExternalId: collectionId,
+    })
+  }
 }
 
 export async function getCollectionArticleIds(collectionId: string): Promise<string[]> {

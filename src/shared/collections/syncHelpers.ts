@@ -23,6 +23,7 @@ export function toOfflineCollection(
     createdAt: 'createdAt' in remoteCollection ? remoteCollection.createdAt ?? now : now,
     updatedAt: 'updatedAt' in remoteCollection ? remoteCollection.updatedAt ?? remoteCollection.createdAt ?? now : now,
     syncStatus: 'SYNCED',
+    serverPersisted: true,
   }
 }
 
@@ -37,6 +38,7 @@ export function buildCollectionLinksSnapshot(
       collectionId,
       createdAt: now,
       syncStatus: 'SYNCED' as const,
+      serverPersisted: true,
     })),
   )
 }

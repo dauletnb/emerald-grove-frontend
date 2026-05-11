@@ -7,20 +7,26 @@ import {
   createCollectionOnServer,
   fetchCollectionsSnapshotFromServer,
   removeArticleFromCollectionOnServer,
+  syncDeletedCollectionLinksToServer,
+  syncDeletedCollectionsToServer,
   syncCollectionLinksToServer,
   syncCollectionsToServer,
 } from '../shared/api/collections'
-import { deleteArticleFromServer, deleteNoteFromServer, fetchArticleAI, fetchArticlesFromServer, syncArticleToServer } from '../shared/api/articles'
-import type { AIResult, AIStatus } from '../shared/types'
 import {
   addArticleNote,
   addArticleToCollection,
+  clearPendingArticleDeletions,
+  clearPendingCollectionDeletions,
+  clearPendingCollectionLinkDeletions,
   createCollection,
   deleteArticle,
   deleteArticleNote,
   getAllCollections,
   getArticleCollectionIds,
   getAllArticles,
+  getPendingArticleDeletions,
+  getPendingCollectionDeletions,
+  getPendingCollectionLinkDeletions,
   getCollectionArticleIds,
   getPendingCollectionLinksForSync,
   getPendingCollectionsForSync,
@@ -33,7 +39,18 @@ import {
   setArticleReadLater,
   type OfflineArticle,
 } from '../shared/repository/db'
+import {
+  deleteArticleFromServer,
+  deleteNoteFromServer,
+  fetchArticleAI,
+  fetchArticlesFromServer,
+  syncArticleToServer,
+  syncDeletedArticlesToServer,
+  type BatchSyncResponse,
+} from '../shared/api/articles'
+import type { AIResult, AIStatus } from '../shared/types'
 import type { ArticleCollection, ArticleNote, LibrarySection, NoteType, SystemSection } from '../shared/types'
+import type { CollectionLinkBatchSyncResponse } from '../shared/api/collections'
 
 const noteTypeOptions: Array<{ value: NoteType; label: string; badgeClass: string; dotClass: string }> = [
   { value: 'IDEA', label: 'Идея', badgeClass: 'bg-emerald-100 text-emerald-800', dotClass: 'bg-emerald-500' },
@@ -267,6 +284,19 @@ export function LibraryApp() {
     return false
   }
 
+  function summarizeBatchSync(label: string, result: BatchSyncResponse | CollectionLinkBatchSyncResponse): string {
+    if (result.skippedCount === 0) {
+      return ''
+    }
+
+    const reasons = result.skipped
+      .slice(0, 3)
+      .map((item) => item.reason ?? 'UNKNOWN_REASON')
+      .join(', ')
+
+    return `${label}: skipped ${result.skippedCount} item(s) (${reasons}).`
+  }
+
   async function refreshArticles() {
     const data = await getAllArticles()
     setArticles(data)
@@ -311,18 +341,42 @@ export function LibraryApp() {
 
     const syncPromise = (async () => {
       const pendingCollections = await getPendingCollectionsForSync()
+      const syncMessages: string[] = []
 
       if (pendingCollections.length > 0) {
-        await syncCollectionsToServer(pendingCollections)
+        const result = await syncCollectionsToServer(pendingCollections)
+        const message = summarizeBatchSync('Collection sync', result)
+        if (message) syncMessages.push(message)
+      }
+
+      const pendingCollectionDeletions = await getPendingCollectionDeletions()
+
+      if (pendingCollectionDeletions.length > 0) {
+        const result = await syncDeletedCollectionsToServer(pendingCollectionDeletions)
+        await clearPendingCollectionDeletions(pendingCollectionDeletions)
+        const message = summarizeBatchSync('Collection deletion sync', result)
+        if (message) syncMessages.push(message)
       }
 
       const pendingLinks = await getPendingCollectionLinksForSync()
 
       if (pendingLinks.length > 0) {
-        await syncCollectionLinksToServer(pendingLinks)
+        const result = await syncCollectionLinksToServer(pendingLinks)
+        const message = summarizeBatchSync('Collection link sync', result)
+        if (message) syncMessages.push(message)
+      }
+
+      const pendingLinkDeletions = await getPendingCollectionLinkDeletions()
+
+      if (pendingLinkDeletions.length > 0) {
+        const result = await syncDeletedCollectionLinksToServer(pendingLinkDeletions)
+        await clearPendingCollectionLinkDeletions(pendingLinkDeletions.map((item) => item.externalId))
+        const message = summarizeBatchSync('Collection link deletion sync', result)
+        if (message) syncMessages.push(message)
       }
 
       await syncCollectionsFromServer()
+      setCollectionError(syncMessages.join(' '))
     })()
 
     collectionsSyncRef.current = syncPromise
@@ -336,14 +390,25 @@ export function LibraryApp() {
 
   async function syncArticlesWithServer() {
     const localArticles = await getAllArticles()
+    const syncMessages: string[] = []
 
     for (const article of localArticles.filter((item) => item.syncStatus === 'PENDING_SYNC')) {
       const synced = await syncArticleToServer(article)
       await saveArticleOffline(synced.article)
     }
 
+    const pendingArticleDeletions = await getPendingArticleDeletions()
+
+    if (pendingArticleDeletions.length > 0) {
+      const result = await syncDeletedArticlesToServer(pendingArticleDeletions)
+      await clearPendingArticleDeletions(pendingArticleDeletions)
+      const message = summarizeBatchSync('Article deletion sync', result)
+      if (message) syncMessages.push(message)
+    }
+
     const remoteArticles = await fetchArticlesFromServer()
     await saveArticlesOffline(remoteArticles)
+    setAuthMessage(syncMessages.join(' '))
   }
 
   useEffect(() => {
@@ -498,6 +563,7 @@ export function LibraryApp() {
     await refreshCollections()
     try {
       await deleteArticleFromServer(id)
+      await clearPendingArticleDeletions([id])
       setAuthMessage('')
     } catch (error) {
       updateAuthMessage(error, '')
@@ -652,7 +718,8 @@ export function LibraryApp() {
       }
 
       if (collectionIds.includes(collectionId)) {
-        setCollectionError('Offline removal is not supported yet.')
+        await removeArticleFromCollection(articleId, collectionId)
+        setCollectionError('Membership removal saved locally and will sync later.')
         await refreshCollections()
         return
       }
