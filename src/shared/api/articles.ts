@@ -116,7 +116,7 @@ export async function syncArticleToServer(article: Article): Promise<{
 }> {
   const externalId = article.id ?? crypto.randomUUID()
 
-  const response = await authFetch(`${API_BASE_URL}/api/articles/sync`, {
+  const response = await authFetch(`${API_BASE_URL}/api/sync/articles`, {
     method: 'POST',
     body: JSON.stringify({
       externalId,
