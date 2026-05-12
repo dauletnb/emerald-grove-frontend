@@ -5,6 +5,7 @@ import { ApiAuthError } from '../shared/api/auth'
 import {
   addArticleToCollectionOnServer,
   createCollectionOnServer,
+  deleteCollectionOnServer,
   fetchCollectionsSnapshotFromServer,
   removeArticleFromCollectionOnServer,
   syncDeletedCollectionLinksToServer,
@@ -21,6 +22,7 @@ import {
   createCollection,
   deleteArticle,
   deleteArticleNote,
+  deleteCollection,
   getAllCollections,
   getArticleCollectionIds,
   getAllArticles,
@@ -353,7 +355,9 @@ export function LibraryApp() {
 
       if (pendingCollectionDeletions.length > 0) {
         const result = await syncDeletedCollectionsToServer(pendingCollectionDeletions)
-        await clearPendingCollectionDeletions(pendingCollectionDeletions)
+        if (result.skippedCount === 0) {
+          await clearPendingCollectionDeletions(pendingCollectionDeletions)
+        }
         const message = summarizeBatchSync('Collection deletion sync', result)
         if (message) syncMessages.push(message)
       }
@@ -370,7 +374,9 @@ export function LibraryApp() {
 
       if (pendingLinkDeletions.length > 0) {
         const result = await syncDeletedCollectionLinksToServer(pendingLinkDeletions)
-        await clearPendingCollectionLinkDeletions(pendingLinkDeletions.map((item) => item.externalId))
+        if (result.skippedCount === 0) {
+          await clearPendingCollectionLinkDeletions(pendingLinkDeletions.map((item) => item.externalId))
+        }
         const message = summarizeBatchSync('Collection link deletion sync', result)
         if (message) syncMessages.push(message)
       }
@@ -401,7 +407,9 @@ export function LibraryApp() {
 
     if (pendingArticleDeletions.length > 0) {
       const result = await syncDeletedArticlesToServer(pendingArticleDeletions)
-      await clearPendingArticleDeletions(pendingArticleDeletions)
+      if (result.skippedCount === 0) {
+        await clearPendingArticleDeletions(pendingArticleDeletions)
+      }
       const message = summarizeBatchSync('Article deletion sync', result)
       if (message) syncMessages.push(message)
     }
@@ -568,6 +576,22 @@ export function LibraryApp() {
     } catch (error) {
       updateAuthMessage(error, '')
       console.warn('Failed to delete article from server', error)
+    }
+  }
+
+  async function handleDeleteCollection(collectionId: string) {
+    await deleteCollection(collectionId)
+    setCollections((prev) => prev.filter((collection) => collection.id !== collectionId))
+    await refreshCollections()
+    try {
+      await deleteCollectionOnServer(collectionId)
+      await clearPendingCollectionDeletions([collectionId])
+      setCollectionError('')
+    } catch (error) {
+      if (updateAuthMessage(error, '')) {
+        setCollectionError(error instanceof Error ? error.message : 'Failed to delete collection.')
+      }
+      console.warn('Failed to delete collection from server', error)
     }
   }
 
@@ -809,22 +833,39 @@ export function LibraryApp() {
                       </div>
                     ) : (
                       filteredSidebarCollections.map((collection) => (
-                        <button
+                        <div
                           key={collection.id}
-                          onClick={() => setSelectedSection({ type: 'collection', id: collection.id })}
-                          className={`w-full rounded-[18px] border px-4 py-3 text-left transition ${
+                          className={`flex items-center gap-2 rounded-[18px] border px-4 py-3 transition ${
                             selectedSection.type === 'collection' && selectedSection.id === collection.id
                               ? 'border-emerald-200 bg-emerald-50/80'
                               : 'border-slate-200 bg-white hover:border-slate-300'
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="truncate text-sm font-semibold text-slate-900">{collection.name}</span>
-                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-                              {(collectionArticleIds[collection.id] ?? []).length}
-                            </span>
-                          </div>
-                        </button>
+                          <button
+                            onClick={() => setSelectedSection({ type: 'collection', id: collection.id })}
+                            className="flex-1 text-left"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="truncate text-sm font-semibold text-slate-900">{collection.name}</span>
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                                {(collectionArticleIds[collection.id] ?? []).length}
+                              </span>
+                            </div>
+                          </button>
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              void handleDeleteCollection(collection.id)
+                            }}
+                            className="rounded-full p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+                            title="Удалить раздел"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
+                        </div>
                       ))
                     )}
                   </div>

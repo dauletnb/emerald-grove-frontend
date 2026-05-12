@@ -11,14 +11,10 @@
             "id": "bff67837276a604a",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "stage_1_total.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "stage_1_total"
+              "title": "Новая вкладка"
             }
           }
         ]
@@ -199,8 +195,9 @@
       "bases:Создать новую базу": false
     }
   },
-  "active": "bff67837276a604a",
+  "active": "06d53eafd7b3f61c",
   "lastOpenFiles": [
+    "Без названия",
     "Добро пожаловать.md",
     "stage_1_total.md",
     "создайте ссылку.md"
