@@ -11,6 +11,7 @@ type RemoteArticle = {
   url: string
   title: string
   description: string
+  content?: string | null
   isFavorite: boolean
   isReadLater: boolean
   aiStatus?: AIStatus | null
@@ -95,6 +96,7 @@ export function toOfflineArticle(remoteArticle: RemoteArticle): OfflineArticle {
     title: remoteArticle.title,
     url: remoteArticle.url,
     description: remoteArticle.description ?? '',
+    content: remoteArticle.content ?? undefined,
     createdAt: remoteArticle.createdAt ?? Date.now(),
     updatedAt: remoteArticle.updatedAt ?? remoteArticle.createdAt ?? Date.now(),
     syncStatus: 'SYNCED',
@@ -123,6 +125,7 @@ export async function syncArticleToServer(article: Article): Promise<{
       url: article.url,
       title: article.title,
       description: article.description,
+      content: article.content ?? null,
       isFavorite: article.isFavorite,
       isReadLater: article.isReadLater,
       notes: (article.notes ?? []).map((note) => ({
@@ -150,6 +153,7 @@ export async function syncArticleToServer(article: Article): Promise<{
           title: article.title,
           url: article.url,
           description: article.description ?? '',
+          content: article.content ?? undefined,
           createdAt: article.createdAt ?? Date.now(),
           updatedAt: Date.now(),
           syncStatus: 'SYNCED' as const,

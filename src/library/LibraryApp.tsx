@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import DOMPurify from 'dompurify'
 import { AiPanel } from '../components/AiPanel'
 import { SafeNoteRenderer } from '../components/SafeNoteRenderer'
 import { ApiAuthError } from '../shared/api/auth'
@@ -266,6 +267,7 @@ export function LibraryApp() {
   const [newCollectionName, setNewCollectionName] = useState('')
   const [collectionError, setCollectionError] = useState('')
   const [isManageSectionsOpen, setIsManageSectionsOpen] = useState(false)
+  const [readingMode, setReadingMode] = useState(false)
   const [sidebarSectionSearchQuery, setSidebarSectionSearchQuery] = useState('')
   const [manageSectionSearchQuery, setManageSectionSearchQuery] = useState('')
   const [aiCache, setAiCache] = useState<Record<string, { status: AIStatus; result?: AIResult }>>({})
@@ -562,6 +564,7 @@ export function LibraryApp() {
     if (resolvedSelectedArticleId) {
       loadAiForArticle(resolvedSelectedArticleId)
     }
+    setReadingMode(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedSelectedArticleId])
 
@@ -1068,6 +1071,34 @@ export function LibraryApp() {
                     </div>
                   </div>
 
+                  {selectedArticle.content ? (
+                    <div className="flex border-b border-slate-100">
+                      <button
+                        onClick={() => setReadingMode(false)}
+                        className={`flex-1 py-3 text-sm font-semibold transition border-b-2 ${!readingMode ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                      >
+                        Заметки
+                      </button>
+                      <button
+                        onClick={() => setReadingMode(true)}
+                        className={`flex-1 py-3 text-sm font-semibold transition border-b-2 ${readingMode ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                      >
+                        Читать
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {readingMode && selectedArticle.content ? (
+                    <div className="flex-1 overflow-y-auto p-6">
+                      <div
+                        className="article-content"
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.content) }}
+                      />
+                    </div>
+                  ) : null}
+
+                  {!readingMode ? (
+                  <>
                   {aiCache[selectedArticle.id] ? (
                     <div className="border-b border-slate-100 p-6">
                       <AiPanel
@@ -1295,6 +1326,7 @@ export function LibraryApp() {
                       </div>
                     )}
                   </div>
+                  </>) : null}
                 </div>
               ) : (
                 <div className="flex h-full min-h-[420px] items-center justify-center p-8 text-center text-sm text-slate-400">

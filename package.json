@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "sync-types": "ts-node scripts/sync-types.ts",
     "type-check": "tsc --noEmit",
-    "test:content-extraction": "node --loader ts-node/esm tests/content-extraction-test.ts",
+    "test:content-extraction": "tsc --outDir node_modules/.tmp/content-extraction-tests --target ES2022 --lib ES2022,DOM --module CommonJS --moduleResolution node --skipLibCheck tests/content-extraction-test.ts src/content/extraction.ts src/shared/types.ts && node node_modules/.tmp/content-extraction-tests/tests/content-extraction-test.js",
     "test:collections-sync": "tsc --outDir node_modules/.tmp/collections-sync-tests --target ES2022 --module CommonJS --moduleResolution node tests/collections-sync.test.ts src/shared/collections/syncHelpers.ts src/shared/types.ts && node node_modules/.tmp/collections-sync-tests/tests/collections-sync.test.js"
   },
   "dependencies": {

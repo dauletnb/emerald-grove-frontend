@@ -10,6 +10,7 @@ export interface OfflineArticle {
   title: string
   url: string
   description: string
+  content?: string
   createdAt: number
   updatedAt?: number
   syncStatus: 'SYNCED' | 'PENDING_SYNC'
