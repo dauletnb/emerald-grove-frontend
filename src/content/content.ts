@@ -1,13 +1,16 @@
 import './styles.css'
 import type { Article } from '../shared/types'
 import { MessageType, type ExtensionMessage } from '../shared/types'
-import { extractArticleFromDocument, extractCleanText, normalizeText } from './extraction'
+import { extractWithReadability } from './extraction'
 
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
   if (message.type === MessageType.GET_PAGE_DATA) {
     try {
+      const extracted = extractWithReadability(document)
       const data: Article = {
-        ...extractArticleFromDocument(document),
+        title: extracted.title,
+        description: extracted.excerpt,
+        content: extracted.content || undefined,
         url: window.location.href,
         notes: [],
         isFavorite: false,
@@ -16,12 +19,12 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
 
       sendResponse(data)
     } catch (error) {
-      console.warn('Article extraction failed, using fallback', error)
+      console.warn('Readability extraction failed, using fallback', error)
 
       sendResponse({
-        title: normalizeText(document.title || 'No Title'),
+        title: document.title || 'No Title',
         url: window.location.href,
-        description: extractCleanText(document.body),
+        description: (document.body?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 500),
         notes: [],
         isFavorite: false,
         isReadLater: false,
