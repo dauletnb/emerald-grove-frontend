@@ -4,11 +4,9 @@ import { AiPanel } from '../components/AiPanel'
 import { SafeNoteRenderer } from '../components/SafeNoteRenderer'
 import { ApiAuthError } from '../shared/api/auth'
 import {
-  addArticleToCollectionOnServer,
   createCollectionOnServer,
   deleteCollectionOnServer,
   fetchCollectionsSnapshotFromServer,
-  removeArticleFromCollectionOnServer,
   syncDeletedCollectionLinksToServer,
   syncDeletedCollectionsToServer,
   syncCollectionLinksToServer,
@@ -16,7 +14,6 @@ import {
 } from '../shared/api/collections'
 import {
   addArticleNote,
-  addArticleToCollection,
   clearPendingArticleDeletions,
   clearPendingCollectionDeletions,
   clearPendingCollectionLinkDeletions,
@@ -25,7 +22,6 @@ import {
   deleteArticleNote,
   deleteCollection,
   getAllCollections,
-  getArticleCollectionIds,
   getAllArticles,
   getPendingArticleDeletions,
   getPendingCollectionDeletions,
@@ -33,7 +29,6 @@ import {
   getCollectionArticleIds,
   getPendingCollectionLinksForSync,
   getPendingCollectionsForSync,
-  removeArticleFromCollection,
   replaceCollectionsState,
   saveCollectionOffline,
   saveArticleOffline,
@@ -62,7 +57,7 @@ const noteTypeOptions: Array<{ value: NoteType; label: string; badgeClass: strin
 ]
 
 const noteFilters = ['ALL', 'IDEA', 'TASK', 'QUESTION'] as const
-const NOTE_CONTENT_MAX_LENGTH = 2000
+const NOTE_CONTENT_MAX_LENGTH = 500
 
 type NoteFilter = (typeof noteFilters)[number]
 
@@ -73,11 +68,11 @@ type DraftState = {
   error: string
 }
 
-const systemSections: Array<{ id: SystemSection; label: string; description: string }> = [
-  { id: 'ALL', label: 'Все', description: 'Все материалы в библиотеке' },
-  { id: 'RECENT', label: 'Недавние', description: 'Отсортировано по последней активности' },
-  { id: 'FAVORITES', label: 'Избранное', description: 'Закреплено для быстрого доступа' },
-  { id: 'READ_LATER', label: 'Прочитать позже', description: 'Отложено на потом' },
+const systemSections: Array<{ id: SystemSection; label: string }> = [
+  { id: 'ALL', label: 'Все' },
+  { id: 'RECENT', label: 'Недавние' },
+  { id: 'FAVORITES', label: 'Избранное' },
+  { id: 'READ_LATER', label: 'Прочитать позже' },
 ]
 
 function createDraftState(): DraftState {
@@ -120,10 +115,10 @@ function FilterChip({
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+      className={`${
         active
-          ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
-          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+          ? 'text-emerald-700 font-semibold underline underline-offset-4'
+          : 'text-slate-400 hover:text-slate-700 transition'
       }`}
     >
       {children}
@@ -164,13 +159,11 @@ function SoftActionButton({
 function SectionButton({
   active,
   title,
-  subtitle,
   count,
   onClick,
 }: {
   active: boolean
   title: string
-  subtitle: string
   count: number
   onClick: () => void
 }) {
@@ -191,7 +184,6 @@ function SectionButton({
           {count}
         </span>
       </div>
-      <p className="mt-1 text-xs leading-5 text-slate-500">{subtitle}</p>
     </button>
   )
 }
@@ -258,7 +250,6 @@ export function LibraryApp() {
   const [articles, setArticles] = useState<OfflineArticle[] | null>(null)
   const [collections, setCollections] = useState<ArticleCollection[]>([])
   const [collectionArticleIds, setCollectionArticleIds] = useState<Record<string, string[]>>({})
-  const [articleCollectionIds, setArticleCollectionIds] = useState<Record<string, string[]>>({})
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null)
   const [selectedSection, setSelectedSection] = useState<LibrarySection>({ type: 'system', id: 'ALL' })
   const [drafts, setDrafts] = useState<Record<string, DraftState>>({})
@@ -266,10 +257,9 @@ export function LibraryApp() {
   const [searchQuery, setSearchQuery] = useState('')
   const [newCollectionName, setNewCollectionName] = useState('')
   const [collectionError, setCollectionError] = useState('')
-  const [isManageSectionsOpen, setIsManageSectionsOpen] = useState(false)
   const [readingMode, setReadingMode] = useState(false)
   const [sidebarSectionSearchQuery, setSidebarSectionSearchQuery] = useState('')
-  const [manageSectionSearchQuery, setManageSectionSearchQuery] = useState('')
+  const [showCreateInput, setShowCreateInput] = useState(false)
   const [aiCache, setAiCache] = useState<Record<string, { status: AIStatus; result?: AIResult }>>({})
   const [authMessage, setAuthMessage] = useState('')
   const aiInitiated = useRef<Set<string>>(new Set())
@@ -317,15 +307,6 @@ export function LibraryApp() {
     }
 
     setCollectionArticleIds(nextCollectionArticleIds)
-
-    const nextArticleCollectionIds: Record<string, string[]> = {}
-    const articleList = await getAllArticles()
-
-    for (const article of articleList) {
-      nextArticleCollectionIds[article.id] = await getArticleCollectionIds(article.id)
-    }
-
-    setArticleCollectionIds(nextArticleCollectionIds)
   }
 
   async function refreshLibraryState() {
@@ -513,16 +494,6 @@ export function LibraryApp() {
       : selectedArticle.notes.filter((note) => note.type === noteFilter)
   }, [noteFilter, selectedArticle])
 
-  const selectedArticleCollectionIds = useMemo(
-    () => (selectedArticle ? articleCollectionIds[selectedArticle.id] ?? [] : []),
-    [articleCollectionIds, selectedArticle],
-  )
-
-  const selectedArticleCollections = useMemo(
-    () => collections.filter((collection) => selectedArticleCollectionIds.includes(collection.id)),
-    [collections, selectedArticleCollectionIds],
-  )
-
   const filteredSidebarCollections = useMemo(() => {
     const query = sidebarSectionSearchQuery.trim().toLowerCase()
 
@@ -532,16 +503,6 @@ export function LibraryApp() {
 
     return collections.filter((collection) => collection.name.toLowerCase().includes(query))
   }, [collections, sidebarSectionSearchQuery])
-
-  const filteredManageCollections = useMemo(() => {
-    const query = manageSectionSearchQuery.trim().toLowerCase()
-
-    if (!query) {
-      return collections
-    }
-
-    return collections.filter((collection) => collection.name.toLowerCase().includes(query))
-  }, [collections, manageSectionSearchQuery])
 
   function loadAiForArticle(articleId: string) {
     if (aiInitiated.current.has(articleId)) return
@@ -724,39 +685,6 @@ export function LibraryApp() {
     }
   }
 
-  async function handleToggleCollectionMembership(articleId: string, collectionId: string) {
-    const collectionIds = articleCollectionIds[articleId] ?? []
-
-    try {
-      if (collectionIds.includes(collectionId)) {
-        await removeArticleFromCollectionOnServer(collectionId, articleId)
-        await removeArticleFromCollection(articleId, collectionId, { syncStatus: 'SYNCED' })
-      } else {
-        await addArticleToCollectionOnServer(collectionId, articleId)
-        await addArticleToCollection(articleId, collectionId, { syncStatus: 'SYNCED' })
-      }
-
-      setCollectionError('')
-      await refreshCollections()
-    } catch (error) {
-      if (updateAuthMessage(error, '')) {
-        setCollectionError(error instanceof Error ? error.message : 'Please sign in again.')
-        return
-      }
-
-      if (collectionIds.includes(collectionId)) {
-        await removeArticleFromCollection(articleId, collectionId)
-        setCollectionError('Membership removal saved locally and will sync later.')
-        await refreshCollections()
-        return
-      }
-
-      await addArticleToCollection(articleId, collectionId, { syncStatus: 'PENDING_SYNC' })
-      setCollectionError('Membership saved locally and will sync later.')
-      await refreshCollections()
-    }
-  }
-
 
   const systemSectionCounts = useMemo(
     () => ({
@@ -773,7 +701,7 @@ export function LibraryApp() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),_transparent_28%),linear-gradient(180deg,#f7fee7_0%,#f8fafc_34%,#eef2ff_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_center,_rgba(16,185,129,0.12),_transparent_60%),linear-gradient(180deg,#f7fee7_0%,#f8fafc_34%,#eef2ff_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <div className="flex flex-col gap-3 rounded-[28px] border border-white/70 bg-white/75 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
@@ -781,7 +709,7 @@ export function LibraryApp() {
               EG
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Библиотека</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Цифровая библиотека</p>
               <p className="text-sm text-slate-500">{articles.length} сохранённых статей</p>
             </div>
           </div>
@@ -806,7 +734,6 @@ export function LibraryApp() {
                       key={section.id}
                       active={selectedSection.type === 'system' && selectedSection.id === section.id}
                       title={section.label}
-                      subtitle={section.description}
                       count={systemSectionCounts[section.id]}
                       onClick={() => setSelectedSection({ type: 'system', id: section.id })}
                     />
@@ -816,20 +743,31 @@ export function LibraryApp() {
 
               <div className="mt-6 border-t border-slate-100 pt-5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Пользовательские разделы</p>
-                  <span className="text-xs text-slate-400">Всего: {collections.length}</span>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Мои разделы</p>
+                  <button
+                    onClick={() => setShowCreateInput(!showCreateInput)}
+                    className="rounded-full p-1 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600"
+                    title="Создать раздел"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                  </button>
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  <input
-                    type="search"
-                    value={sidebarSectionSearchQuery}
-                    onChange={(event) => setSidebarSectionSearchQuery(event.target.value)}
-                    placeholder="Поиск по пользовательским разделам"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
-                  />
+                  {collections.length >= 8 && (
+                    <input
+                      type="search"
+                      value={sidebarSectionSearchQuery}
+                      onChange={(event) => setSidebarSectionSearchQuery(event.target.value)}
+                      placeholder="Поиск по пользовательским разделам"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
+                    />
+                  )}
 
-                  <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                  <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
                     {filteredSidebarCollections.length === 0 ? (
                       <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                         Пользовательских разделов пока нет.
@@ -873,9 +811,8 @@ export function LibraryApp() {
                     )}
                   </div>
 
-                  <div className="border-t border-slate-100 pt-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Создать пользовательский раздел</p>
-                    <div className="mt-3 space-y-2">
+                  {showCreateInput && (
+                    <div className="border-t border-slate-100 pt-3">
                       <input
                         type="text"
                         value={newCollectionName}
@@ -883,18 +820,29 @@ export function LibraryApp() {
                           setNewCollectionName(event.target.value)
                           setCollectionError('')
                         }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            void handleCreateCollectionFromSidebar()
+                            setShowCreateInput(false)
+                          }
+                          if (event.key === 'Escape') {
+                            setShowCreateInput(false)
+                            setNewCollectionName('')
+                            setCollectionError('')
+                          }
+                        }}
+                        onBlur={() => {
+                          setShowCreateInput(false)
+                          setNewCollectionName('')
+                          setCollectionError('')
+                        }}
                         placeholder="Название раздела"
+                        autoFocus
                         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
                       />
-                      <button
-                        onClick={() => void handleCreateCollectionFromSidebar()}
-                        className="w-full rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-                      >
-                        Создать раздел
-                      </button>
-                      {collectionError ? <p className="text-xs text-rose-500">{collectionError}</p> : null}
+                      {collectionError ? <p className="mt-2 text-xs text-rose-500">{collectionError}</p> : null}
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -931,7 +879,7 @@ export function LibraryApp() {
                   return (
                     <article
                       key={article.id}
-                    className={`group rounded-[28px] border p-5 transition ${
+                    className={`group rounded-[28px] border p-4 transition ${
                         isSelected
                           ? 'border-emerald-300 bg-emerald-50/80 shadow-[0_20px_45px_rgba(16,185,129,0.14)]'
                           : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80'
@@ -952,34 +900,11 @@ export function LibraryApp() {
                           ) : null}
                         </div>
 
-                        <h3 className="mt-4 max-w-[36rem] text-xl font-semibold leading-tight text-slate-950 transition group-hover:text-slate-700">
+                        <h3 className="mt-4 max-w-[36rem] text-lg font-semibold leading-tight text-slate-950 transition group-hover:text-slate-700">
                           {article.title}
                         </h3>
 
-                        {article.description ? (
-                          <SafeNoteRenderer
-                            as="p"
-                            content={article.description}
-                            maxLength={220}
-                            className="mt-3 max-w-[44rem] overflow-hidden text-sm leading-6 text-slate-600"
-                          />
-                        ) : null}
-
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {article.isFavorite ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                              <StarIcon className="h-3.5 w-3.5" />
-                              В избранном
-                            </span>
-                          ) : null}
-
-                          {article.isReadLater ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                              <ClockIcon className="h-3.5 w-3.5" />
-                              Прочитать позже
-                            </span>
-                          ) : null}
-
+                        <div className="mt-3 flex flex-wrap gap-2">
                           {noteTypeOptions.map((option) =>
                             counts[option.value] > 0 ? (
                               <NoteBadge key={option.value} type={option.value} count={counts[option.value]} />
@@ -994,7 +919,7 @@ export function LibraryApp() {
                         </div>
                       </button>
 
-                      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                      <div className={`mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 ${isSelected ? 'flex' : 'hidden group-hover:flex'}`}>
                         <div className="flex flex-wrap gap-2">
                           <SoftActionButton
                             active={article.isFavorite}
@@ -1054,19 +979,11 @@ export function LibraryApp() {
                       })}
                     </div>
 
-                    <h2 className="mt-4 text-2xl font-semibold leading-tight">{selectedArticle.title}</h2>
+                    <h2 className="mt-3 text-xl font-semibold leading-tight">{selectedArticle.title}</h2>
 
-                    {selectedArticle.description ? (
-                      <SafeNoteRenderer
-                        as="p"
-                        content={selectedArticle.description}
-                        className="mt-3 text-sm leading-6 text-slate-600"
-                      />
-                    ) : null}
-
-                    <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-500">
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span>{formatDate(selectedArticle.createdAt)}</span>
-                      <span className="h-1 w-1 rounded-full bg-slate-600" />
+                      <span className="h-1 w-1 rounded-full bg-slate-400" />
                       <span>Всего заметок: {selectedArticle.notes.length}</span>
                     </div>
                   </div>
@@ -1089,147 +1006,37 @@ export function LibraryApp() {
                   ) : null}
 
                   {readingMode && selectedArticle.content ? (
-                    <div className="flex-1 overflow-y-auto p-6">
-                      <div
-                        className="article-content"
-                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.content) }}
-                      />
+                    <div className="flex-1 overflow-y-auto">
+                      {aiCache[selectedArticle.id] ? (
+                        <div className="border-b border-slate-100 px-6 py-4">
+                          <AiPanel
+                            status={aiCache[selectedArticle.id].status}
+                            result={aiCache[selectedArticle.id].result}
+                            onRetry={() => {
+                              aiInitiated.current.delete(selectedArticle.id)
+                              setAiCache((prev) => {
+                                const next = { ...prev }
+                                delete next[selectedArticle.id]
+                                return next
+                              })
+                              loadAiForArticle(selectedArticle.id)
+                            }}
+                          />
+                        </div>
+                      ) : null}
+                      <div className="p-6">
+                        <div
+                          className="article-content"
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.content) }}
+                        />
+                      </div>
                     </div>
                   ) : null}
 
                   {!readingMode ? (
                   <>
-                  {aiCache[selectedArticle.id] ? (
-                    <div className="border-b border-slate-100 p-6">
-                      <AiPanel
-                        status={aiCache[selectedArticle.id].status}
-                        result={aiCache[selectedArticle.id].result}
-                        onRetry={() => {
-                          aiInitiated.current.delete(selectedArticle.id)
-                          setAiCache((prev) => {
-                            const next = { ...prev }
-                            delete next[selectedArticle.id]
-                            return next
-                          })
-                          loadAiForArticle(selectedArticle.id)
-                        }}
-                      />
-                    </div>
-                  ) : null}
-
                   <div className="border-b border-slate-100 p-6">
-                    <div className="flex flex-wrap gap-2">
-                      {noteFilters.map((filter) => (
-                        <FilterChip
-                          key={filter}
-                          active={noteFilter === filter}
-                          onClick={() => setNoteFilter(filter)}
-                        >
-                          {filter === 'ALL' ? 'Все заметки' : getNoteTypeMeta(filter).label}
-                        </FilterChip>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="border-b border-slate-100 p-6">
-                    <div className="mb-5 rounded-[24px] bg-slate-50 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Статус статьи</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <SoftActionButton
-                          active={selectedArticle.isFavorite}
-                          icon={<StarIcon className="h-4 w-4" />}
-                          activeLabel="В избранном"
-                          inactiveLabel="Добавить в избранное"
-                          activeClassName="border-amber-200 bg-amber-50 text-amber-700"
-                          onClick={() => void handleToggleFavorite(selectedArticle)}
-                        />
-                        <SoftActionButton
-                          active={selectedArticle.isReadLater}
-                          icon={<ClockIcon className="h-4 w-4" />}
-                          activeLabel="Отложено на потом"
-                          inactiveLabel="Прочитать позже"
-                          activeClassName="border-sky-200 bg-sky-50 text-sky-700"
-                          onClick={() => void handleToggleReadLater(selectedArticle)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mb-5 rounded-[24px] bg-slate-50 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Пользовательские разделы</p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            {selectedArticleCollections.length > 0
-                              ? `Связано разделов: ${selectedArticleCollections.length}`
-                              : 'Пользовательских разделов пока нет'}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            setIsManageSectionsOpen((value) => !value)
-                            setManageSectionSearchQuery('')
-                            setCollectionError('')
-                          }}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-                        >
-                          Управлять разделами
-                        </button>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {selectedArticleCollections.map((collection) => (
-                          <span
-                            key={collection.id}
-                            className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
-                          >
-                            {collection.name}
-                          </span>
-                        ))}
-                        {selectedArticleCollections.length === 0 ? (
-                          <span className="text-sm text-slate-400">Эта статья пока не добавлена ни в один раздел.</span>
-                        ) : null}
-                      </div>
-
-                      {isManageSectionsOpen ? (
-                        <div className="mt-4 rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.08)]">
-                          <div className="space-y-3">
-                            <input
-                              type="search"
-                              value={manageSectionSearchQuery}
-                              onChange={(event) => setManageSectionSearchQuery(event.target.value)}
-                              placeholder="Фильтр по разделам"
-                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
-                            />
-
-                            <div className="flex max-h-52 flex-wrap gap-2 overflow-y-auto pr-1">
-                              {filteredManageCollections.map((collection) => {
-                                const active = selectedArticleCollectionIds.includes(collection.id)
-
-                                return (
-                                  <button
-                                    key={collection.id}
-                                    onClick={() => void handleToggleCollectionMembership(selectedArticle.id, collection.id)}
-                                    className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                                      active
-                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
-                                    }`}
-                                  >
-                                    {active ? 'Выбрано' : 'Добавить'} {collection.name}
-                                  </button>
-                                )
-                              })}
-                              {filteredManageCollections.length === 0 ? (
-                                <p className="text-sm text-slate-400">Подходящие пользовательские разделы не найдены.</p>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-
                     <div className="space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Новая заметка</p>
                       <div className="flex flex-wrap gap-2">
                         {noteTypeOptions.map((option) => {
                           const active = getDraft(selectedArticle.id).type === option.value
@@ -1243,7 +1050,7 @@ export function LibraryApp() {
                                   error: '',
                                 })
                               }
-                              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                              className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
                                 active
                                   ? 'bg-emerald-400 text-slate-950'
                                   : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950'
@@ -1264,20 +1071,20 @@ export function LibraryApp() {
                           })
                         }
                         placeholder="Запишите вопрос, идею реализации или следующую задачу, пока статья ещё свежа в памяти."
-                        rows={4}
+                        rows={3}
                         maxLength={NOTE_CONTENT_MAX_LENGTH}
-                        className="min-h-28 w-full rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
+                        className="min-h-20 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
                       />
                     </div>
 
-                    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-sm text-rose-500">
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-xs text-slate-400">
                         {getDraft(selectedArticle.id).error || `${getDraft(selectedArticle.id).content.length}/${NOTE_CONTENT_MAX_LENGTH}`}
                       </p>
                       <button
                         onClick={() => void handleAddNote(selectedArticle.id)}
                         disabled={getDraft(selectedArticle.id).saving}
-                        className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                        className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
                           getDraft(selectedArticle.id).saving
                             ? 'cursor-wait bg-slate-600 text-slate-200'
                             : 'bg-emerald-400 text-slate-950 hover:bg-emerald-300'
@@ -1288,13 +1095,21 @@ export function LibraryApp() {
                     </div>
                   </div>
 
-                  <div className="flex-1 p-6">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-slate-950">
-                        {noteFilter === 'ALL' ? 'Все заметки' : `Заметки: ${getNoteTypeMeta(noteFilter).label}`}
-                      </h3>
-                      <span className="text-sm text-slate-500">Показано: {selectedNotes.length}</span>
+                  <div className="border-b border-slate-100 px-6 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      {noteFilters.map((filter) => (
+                        <FilterChip
+                          key={filter}
+                          active={noteFilter === filter}
+                          onClick={() => setNoteFilter(filter)}
+                        >
+                          {filter === 'ALL' ? 'Все заметки' : getNoteTypeMeta(filter).label}
+                        </FilterChip>
+                      ))}
                     </div>
+                  </div>
+
+                  <div className="flex-1 p-6">
 
                     {selectedNotes.length === 0 ? (
                       <EmptyNotesState />

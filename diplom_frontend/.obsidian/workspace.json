@@ -1,14 +1,14 @@
 {
   "main": {
-    "id": "c588fa3bd8f0047f",
+    "id": "6ac65175b0d12ad9",
     "type": "split",
     "children": [
       {
-        "id": "1aaaf158d26313be",
+        "id": "041a27578ebfc681",
         "type": "tabs",
         "children": [
           {
-            "id": "bff67837276a604a",
+            "id": "4a92317fb7f51a0e",
             "type": "leaf",
             "state": {
               "type": "empty",
@@ -18,36 +18,20 @@
             }
           }
         ]
-      },
-      {
-        "id": "1e7dd2e08428124c",
-        "type": "tabs",
-        "children": [
-          {
-            "id": "7fa5ec24154498c5",
-            "type": "leaf",
-            "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Граф"
-            }
-          }
-        ]
       }
     ],
     "direction": "vertical"
   },
   "left": {
-    "id": "57fb100bef5c1a39",
+    "id": "81d59d32380f150f",
     "type": "split",
     "children": [
       {
-        "id": "7c52fd6327d2c842",
+        "id": "355d6d6a0f994097",
         "type": "tabs",
         "children": [
           {
-            "id": "06d53eafd7b3f61c",
+            "id": "3855a06dbd723d93",
             "type": "leaf",
             "state": {
               "type": "file-explorer",
@@ -60,7 +44,7 @@
             }
           },
           {
-            "id": "79a28b93a152e45a",
+            "id": "b2512844a712e038",
             "type": "leaf",
             "state": {
               "type": "search",
@@ -77,7 +61,7 @@
             }
           },
           {
-            "id": "58814d52ffbe51d4",
+            "id": "50c394d30a8b2a7e",
             "type": "leaf",
             "state": {
               "type": "bookmarks",
@@ -93,20 +77,19 @@
     "width": 300
   },
   "right": {
-    "id": "f5cad6f609616112",
+    "id": "42bf014ad830c37f",
     "type": "split",
     "children": [
       {
-        "id": "b04e354bad1f91d1",
+        "id": "6121e113c2b3d596",
         "type": "tabs",
         "children": [
           {
-            "id": "b2cf595599f32aa2",
+            "id": "46edf04c01761272",
             "type": "leaf",
             "state": {
               "type": "backlink",
               "state": {
-                "file": "создайте ссылку.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -116,25 +99,24 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Обратные ссылки для создайте ссылку"
+              "title": "Обратные ссылки"
             }
           },
           {
-            "id": "e16ea75792fe83f2",
+            "id": "94979c0d59bffc1d",
             "type": "leaf",
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "создайте ссылку.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Исходящие ссылки из создайте ссылку"
+              "title": "Исходящие ссылки"
             }
           },
           {
-            "id": "0d8d023c441a5f9d",
+            "id": "768d43677bc03677",
             "type": "leaf",
             "state": {
               "type": "tag",
@@ -149,7 +131,7 @@
             }
           },
           {
-            "id": "402f92c55a428e33",
+            "id": "aa5f0614e33412d3",
             "type": "leaf",
             "state": {
               "type": "all-properties",
@@ -163,18 +145,17 @@
             }
           },
           {
-            "id": "8a938ccd5ef9aecd",
+            "id": "3b0a2b3b50733a17",
             "type": "leaf",
             "state": {
               "type": "outline",
               "state": {
-                "file": "создайте ссылку.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Структура создайте ссылку"
+              "title": "Структура"
             }
           }
         ]
@@ -195,11 +176,14 @@
       "bases:Создать новую базу": false
     }
   },
-  "active": "06d53eafd7b3f61c",
+  "active": "4a92317fb7f51a0e",
   "lastOpenFiles": [
-    "Без названия",
-    "Добро пожаловать.md",
-    "stage_1_total.md",
-    "создайте ссылку.md"
+    "AI_NAVIGATION.md~",
+    "layout_cleanup_plan.md",
+    "ai_memory.md~",
+    "AI_NAVIGATION.md",
+    "library_plan.md",
+    "ai_memory.md",
+    "ai_memory"
   ]
 }
