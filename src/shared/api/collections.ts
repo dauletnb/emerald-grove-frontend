@@ -132,7 +132,7 @@ export async function syncCollectionLinksToServer(
     clientCreatedAt: number
   }>,
 ): Promise<CollectionLinkBatchSyncResponse> {
-  const response = await authFetch(`${API_BASE_URL}/api/collections/links/sync`, {
+  const response = await authFetch(`${API_BASE_URL}/api/collections/sync/links`, {
     method: 'POST',
     body: JSON.stringify(links),
   })
@@ -160,7 +160,7 @@ export async function syncDeletedCollectionLinksToServer(
     collectionExternalId: string
   }>,
 ): Promise<CollectionLinkBatchSyncResponse> {
-  const response = await authFetch(`${API_BASE_URL}/api/collections/links/sync/deletions`, {
+  const response = await authFetch(`${API_BASE_URL}/api/collections/sync/links/deletions`, {
     method: 'POST',
     body: JSON.stringify(links),
   })
