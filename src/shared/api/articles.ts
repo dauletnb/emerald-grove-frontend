@@ -118,7 +118,7 @@ export async function syncArticleToServer(article: Article): Promise<{
 }> {
   const externalId = article.id ?? crypto.randomUUID()
 
-  const response = await authFetch(`${API_BASE_URL}/api/sync/articles`, {
+  const response = await authFetch(`${API_BASE_URL}/api/articles/sync`, {
     method: 'POST',
     body: JSON.stringify({
       externalId,
@@ -215,7 +215,7 @@ export async function deleteNoteFromServer(articleExternalId: string, noteExtern
 
 export async function fetchArticleAI(articleId: string): Promise<{ status: AIStatus; result?: AIResult }> {
   const response = await authFetch(
-    `${API_BASE_URL}/api/articles/${encodeURIComponent(articleId)}/ai`,
+    `${API_BASE_URL}/api/ai/articles/${encodeURIComponent(articleId)}`,
     { method: 'GET' },
   )
 
