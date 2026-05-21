@@ -1,52 +1,43 @@
-import * as assert from 'node:assert/strict'
+import { describe, test, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-function run(name: string, fn: () => void) {
-  fn()
-  console.log(`PASS ${name}`)
-}
-
-// Use process.cwd() to get project root regardless of where test is compiled
 const rootDir = process.cwd()
-const articlesPath = join(rootDir, 'src/shared/api/articles.ts')
-const collectionsPath = join(rootDir, 'src/shared/api/collections.ts')
+const articlesContent = readFileSync(join(rootDir, 'src/shared/api/articles.ts'), 'utf-8')
+const collectionsContent = readFileSync(join(rootDir, 'src/shared/api/collections.ts'), 'utf-8')
 
-const articlesContent = readFileSync(articlesPath, 'utf-8')
-const collectionsContent = readFileSync(collectionsPath, 'utf-8')
+describe('API endpoint paths', () => {
+  test('article sync uses /api/articles/sync', () => {
+    expect(articlesContent).toMatch(/\/api\/articles\/sync/)
+    expect(articlesContent).not.toMatch(/\/api\/sync\/articles/)
+  })
 
-run('Article sync endpoint uses new path /api/articles/sync', () => {
-  assert.match(articlesContent, /\/api\/articles\/sync/)
-  assert.doesNotMatch(articlesContent, /\/api\/sync\/articles/)
+  test('article AI endpoint uses /api/ai/articles/{id}', () => {
+    expect(articlesContent).toMatch(/\/api\/ai\/articles\/\$\{encodeURIComponent\(articleId\)\}/)
+    expect(articlesContent).not.toMatch(/\/api\/articles\/\$\{encodeURIComponent\(articleId\)\}\/ai/)
+  })
+
+  test('article deletions sync uses /api/articles/sync/deletions', () => {
+    expect(articlesContent).toMatch(/\/api\/articles\/sync\/deletions/)
+  })
+
+  test('collection sync uses /api/collections/sync', () => {
+    expect(collectionsContent).toMatch(/\/api\/collections\/sync/)
+    expect(collectionsContent).not.toMatch(/\/api\/sync\/collections/)
+  })
+
+  test('collection links sync uses /api/collections/sync/links', () => {
+    expect(collectionsContent).toMatch(/\/api\/collections\/sync\/links/)
+    expect(collectionsContent).not.toMatch(/\/api\/collections\/links\/sync/)
+  })
+
+  test('collection deletions sync uses /api/collections/sync/deletions', () => {
+    expect(collectionsContent).toMatch(/\/api\/collections\/sync\/deletions/)
+    expect(collectionsContent).not.toMatch(/\/api\/sync\/collections\/deletions/)
+  })
+
+  test('collection links deletions uses /api/collections/sync/links/deletions', () => {
+    expect(collectionsContent).toMatch(/\/api\/collections\/sync\/links\/deletions/)
+    expect(collectionsContent).not.toMatch(/\/api\/collections\/links\/sync\/deletions/)
+  })
 })
-
-run('Article AI endpoint uses new path /api/ai/articles/{id}', () => {
-  assert.match(articlesContent, /\/api\/ai\/articles\/\$\{encodeURIComponent\(articleId\)\}/)
-  assert.doesNotMatch(articlesContent, /\/api\/articles\/\$\{encodeURIComponent\(articleId\)\}\/ai/)
-})
-
-run('Article deletions sync endpoint uses /api/articles/sync/deletions', () => {
-  assert.match(articlesContent, /\/api\/articles\/sync\/deletions/)
-})
-
-run('Collection sync endpoint uses /api/collections/sync', () => {
-  assert.match(collectionsContent, /\/api\/collections\/sync/)
-  assert.doesNotMatch(collectionsContent, /\/api\/sync\/collections/)
-})
-
-run('Collection links sync endpoint uses /api/collections/sync/links', () => {
-  assert.match(collectionsContent, /\/api\/collections\/sync\/links/)
-  assert.doesNotMatch(collectionsContent, /\/api\/collections\/links\/sync/)
-})
-
-run('Collection deletions sync endpoint uses /api/collections/sync/deletions', () => {
-  assert.match(collectionsContent, /\/api\/collections\/sync\/deletions/)
-  assert.doesNotMatch(collectionsContent, /\/api\/sync\/collections\/deletions/)
-})
-
-run('Collection links deletions sync endpoint uses /api/collections/sync/links/deletions', () => {
-  assert.match(collectionsContent, /\/api\/collections\/sync\/links\/deletions/)
-  assert.doesNotMatch(collectionsContent, /\/api\/collections\/links\/sync\/deletions/)
-})
-
-console.log('\nAll API endpoint tests passed!')

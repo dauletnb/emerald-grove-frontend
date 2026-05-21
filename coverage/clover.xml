@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1779006095953" clover="3.2.0">
+  <project timestamp="1779006095953" name="All files">
+    <metrics statements="14" coveredstatements="14" conditionals="18" coveredconditionals="18" methods="12" coveredmethods="12" elements="44" coveredelements="44" complexity="0" loc="14" ncloc="14" packages="2" files="2" classes="2"/>
+    <package name="content">
+      <metrics statements="5" coveredstatements="5" conditionals="7" coveredconditionals="7" methods="2" coveredmethods="2"/>
+      <file name="extraction.ts" path="C:\diplom\Emerald-Grove-Frontend\src\content\extraction.ts">
+        <metrics statements="5" coveredstatements="5" conditionals="7" coveredconditionals="7" methods="2" coveredmethods="2"/>
+        <line num="4" count="19" type="stmt"/>
+        <line num="8" count="7" type="stmt"/>
+        <line num="9" count="7" type="stmt"/>
+        <line num="10" count="7" type="stmt"/>
+        <line num="11" count="7" type="stmt"/>
+      </file>
+    </package>
+    <package name="shared.collections">
+      <metrics statements="9" coveredstatements="9" conditionals="11" coveredconditionals="11" methods="10" coveredmethods="10"/>
+      <file name="syncHelpers.ts" path="C:\diplom\Emerald-Grove-Frontend\src\shared\collections\syncHelpers.ts">
+        <metrics statements="9" coveredstatements="9" conditionals="11" coveredconditionals="11" methods="10" coveredmethods="10"/>
+        <line num="20" count="3" type="stmt"/>
+        <line num="34" count="1" type="stmt"/>
+        <line num="35" count="3" type="stmt"/>
+        <line num="49" count="1" type="stmt"/>
+        <line num="50" count="2" type="stmt"/>
+        <line num="51" count="1" type="stmt"/>
+        <line num="65" count="1" type="stmt"/>
+        <line num="66" count="2" type="stmt"/>
+        <line num="67" count="1" type="stmt"/>
+      </file>
+    </package>
+  </project>
+</coverage>
