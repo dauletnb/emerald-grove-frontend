@@ -213,6 +213,20 @@ export async function deleteNoteFromServer(articleExternalId: string, noteExtern
   }
 }
 
+export async function retryArticleAI(articleId: string): Promise<void> {
+  const response = await authFetch(
+    `${API_BASE_URL}/api/ai/articles/${encodeURIComponent(articleId)}/retry`,
+    { method: 'POST' },
+  )
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
+    }
+    throw new Error(`Retry AI failed with status ${response.status}`)
+  }
+}
+
 export async function fetchArticleAI(articleId: string): Promise<{ status: AIStatus; result?: AIResult }> {
   const response = await authFetch(
     `${API_BASE_URL}/api/ai/articles/${encodeURIComponent(articleId)}`,

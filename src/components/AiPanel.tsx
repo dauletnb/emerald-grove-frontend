@@ -57,7 +57,7 @@ function DoneState({ result }: { result: AIResult }) {
         ) : null}
       </div>
 
-      {result.keyPoints.length > 0 ? (
+      {(result.keyPoints?.length ?? 0) > 0 ? (
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Ключевые моменты</p>
           <ul className="space-y-1.5">
@@ -71,7 +71,7 @@ function DoneState({ result }: { result: AIResult }) {
         </div>
       ) : null}
 
-      {result.highlights.length > 0 ? (
+      {(result.highlights?.length ?? 0) > 0 ? (
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Основные выдержки</p>
           <div className="space-y-3">

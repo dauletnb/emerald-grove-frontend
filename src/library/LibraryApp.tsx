@@ -4,9 +4,11 @@ import { AiPanel } from '../components/AiPanel'
 import { SafeNoteRenderer } from '../components/SafeNoteRenderer'
 import { ApiAuthError } from '../shared/api/auth'
 import {
+  addArticleToCollectionOnServer,
   createCollectionOnServer,
   deleteCollectionOnServer,
   fetchCollectionsSnapshotFromServer,
+  removeArticleFromCollectionOnServer,
   syncDeletedCollectionLinksToServer,
   syncDeletedCollectionsToServer,
   syncCollectionLinksToServer,
@@ -14,6 +16,7 @@ import {
 } from '../shared/api/collections'
 import {
   addArticleNote,
+  addArticleToCollection,
   clearPendingArticleDeletions,
   clearPendingCollectionDeletions,
   clearPendingCollectionLinkDeletions,
@@ -29,6 +32,7 @@ import {
   getCollectionArticleIds,
   getPendingCollectionLinksForSync,
   getPendingCollectionsForSync,
+  removeArticleFromCollection,
   replaceCollectionsState,
   saveCollectionOffline,
   saveArticleOffline,
@@ -42,6 +46,7 @@ import {
   deleteNoteFromServer,
   fetchArticleAI,
   fetchArticlesFromServer,
+  retryArticleAI,
   syncArticleToServer,
   syncDeletedArticlesToServer,
   type BatchSyncResponse,
@@ -504,28 +509,61 @@ export function LibraryApp() {
     return collections.filter((collection) => collection.name.toLowerCase().includes(query))
   }, [collections, sidebarSectionSearchQuery])
 
-  function loadAiForArticle(articleId: string) {
-    if (aiInitiated.current.has(articleId)) return
-    aiInitiated.current.add(articleId)
+  const aiPollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const aiPollingArticleId = useRef<string | null>(null)
+  const AI_POLL_INTERVAL_MS = 4_000
+  const AI_POLL_MAX_ATTEMPTS = 10
 
-    setAiCache((prev) => ({ ...prev, [articleId]: { status: 'PENDING' } }))
+  function stopAiPolling() {
+    if (aiPollTimer.current !== null) {
+      clearTimeout(aiPollTimer.current)
+      aiPollTimer.current = null
+    }
+    if (aiPollingArticleId.current !== null) {
+      aiInitiated.current.delete(aiPollingArticleId.current)
+      aiPollingArticleId.current = null
+    }
+  }
+
+  function startAiPolling(articleId: string, attempt = 0) {
+    if (attempt >= AI_POLL_MAX_ATTEMPTS) {
+      setAiCache((prev) => ({ ...prev, [articleId]: { status: 'FAILED' } }))
+      return
+    }
 
     fetchArticleAI(articleId)
       .then(({ status, result }) => {
         setAuthMessage('')
         setAiCache((prev) => ({ ...prev, [articleId]: { status, result } }))
+        if (status === 'PENDING') {
+          aiPollTimer.current = setTimeout(() => startAiPolling(articleId, attempt + 1), AI_POLL_INTERVAL_MS)
+        } else {
+          aiPollingArticleId.current = null
+        }
       })
       .catch((error) => {
         updateAuthMessage(error, '')
         setAiCache((prev) => ({ ...prev, [articleId]: { status: 'FAILED' } }))
+        aiPollingArticleId.current = null
       })
   }
 
+  function loadAiForArticle(articleId: string) {
+    if (aiInitiated.current.has(articleId)) return
+    aiInitiated.current.add(articleId)
+    aiPollingArticleId.current = articleId
+
+    setAiCache((prev) => ({ ...prev, [articleId]: { status: 'PENDING' } }))
+    startAiPolling(articleId)
+  }
+
   useEffect(() => {
+    stopAiPolling()
     if (resolvedSelectedArticleId) {
       loadAiForArticle(resolvedSelectedArticleId)
     }
     setReadingMode(false)
+    return () => stopAiPolling()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedSelectedArticleId])
 
@@ -583,6 +621,26 @@ export function LibraryApp() {
       updateAuthMessage(error, '')
       console.error('Failed to delete note', error)
       await refreshLibraryState()
+    }
+  }
+
+  async function handleToggleArticleInCollection(articleId: string, collectionId: string) {
+    const isIn = (collectionArticleIds[collectionId] ?? []).includes(articleId)
+    try {
+      if (isIn) {
+        await removeArticleFromCollection(articleId, collectionId)
+        await refreshCollections()
+        await removeArticleFromCollectionOnServer(collectionId, articleId)
+      } else {
+        await addArticleToCollection(articleId, collectionId)
+        await refreshCollections()
+        await addArticleToCollectionOnServer(collectionId, articleId)
+      }
+      setAuthMessage('')
+    } catch (error) {
+      updateAuthMessage(error, '')
+      console.warn('Failed to toggle article in collection', error)
+      await refreshCollections()
     }
   }
 
@@ -1008,28 +1066,32 @@ export function LibraryApp() {
                   {readingMode && selectedArticle.content ? (
                     <div className="flex-1 overflow-y-auto">
                       {aiCache[selectedArticle.id] ? (
-                        <div className="border-b border-slate-100 px-6 py-4">
+                        <div className={aiCache[selectedArticle.id].status === 'DONE' ? 'p-6' : 'border-b border-slate-100 px-6 py-4'}>
                           <AiPanel
                             status={aiCache[selectedArticle.id].status}
                             result={aiCache[selectedArticle.id].result}
                             onRetry={() => {
-                              aiInitiated.current.delete(selectedArticle.id)
-                              setAiCache((prev) => {
-                                const next = { ...prev }
-                                delete next[selectedArticle.id]
-                                return next
-                              })
-                              loadAiForArticle(selectedArticle.id)
+                              const id = selectedArticle.id
+                              aiInitiated.current.delete(id)
+                              setAiCache((prev) => ({ ...prev, [id]: { status: 'PENDING' } }))
+                              retryArticleAI(id)
+                                .then(() => loadAiForArticle(id))
+                                .catch((err) => {
+                                  updateAuthMessage(err, '')
+                                  setAiCache((prev) => ({ ...prev, [id]: { status: 'FAILED' } }))
+                                })
                             }}
                           />
                         </div>
                       ) : null}
-                      <div className="p-6">
-                        <div
-                          className="article-content"
-                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.content) }}
-                        />
-                      </div>
+                      {aiCache[selectedArticle.id]?.status !== 'DONE' ? (
+                        <div className="p-6">
+                          <div
+                            className="article-content"
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.content) }}
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -1094,6 +1156,30 @@ export function LibraryApp() {
                       </button>
                     </div>
                   </div>
+
+                  {collections.length > 0 ? (
+                    <div className="border-b border-slate-100 px-6 py-4">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">Коллекции</p>
+                      <div className="flex flex-wrap gap-2">
+                        {collections.map((collection) => {
+                          const isIn = (collectionArticleIds[collection.id] ?? []).includes(selectedArticle.id)
+                          return (
+                            <button
+                              key={collection.id}
+                              onClick={() => void handleToggleArticleInCollection(selectedArticle.id, collection.id)}
+                              className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                                isIn
+                                  ? 'bg-emerald-400 text-slate-950'
+                                  : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950'
+                              }`}
+                            >
+                              {collection.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="border-b border-slate-100 px-6 py-2">
                     <div className="flex flex-wrap gap-2">
