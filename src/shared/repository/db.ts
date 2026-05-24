@@ -44,6 +44,19 @@ type DeletedExternalIdItem = {
   externalId: string
 }
 
+/**
+ * Preserve local note createdAt when the note already exists in IndexedDB.
+ * Protects against backend timezone drift (+5h on each sync round-trip).
+ */
+function mergeNoteDates(incoming: ArticleNote[], existing?: ArticleNote[]): ArticleNote[] {
+  if (!existing || existing.length === 0) return incoming
+  const localDates = new Map(existing.map((n) => [n.id, n.createdAt]))
+  return incoming.map((note) => {
+    const localCreatedAt = localDates.get(note.id)
+    return localCreatedAt != null ? { ...note, createdAt: localCreatedAt } : note
+  })
+}
+
 function normalizeArticle(article: OfflineArticle): OfflineArticle {
   return {
     ...article,
@@ -145,7 +158,7 @@ export async function saveArticleOffline(article: OfflineArticle): Promise<Offli
     ...article,
     id: article.id,
     url: article.url,
-    notes: article.notes ?? existingArticle?.notes ?? [],
+    notes: mergeNoteDates(article.notes ?? [], existingArticle?.notes),
     isFavorite: article.isFavorite ?? existingArticle?.isFavorite ?? false,
     isReadLater: article.isReadLater ?? existingArticle?.isReadLater ?? false,
   })
@@ -234,6 +247,27 @@ export async function deleteArticleNote(articleId: string, noteId: string): Prom
   return saveArticleOffline({
     ...article,
     notes: article.notes.filter((note) => note.id !== noteId),
+    syncStatus: 'PENDING_SYNC',
+    updatedAt: Date.now(),
+  })
+}
+
+export async function updateArticleNote(
+  articleId: string,
+  noteId: string,
+  patch: { type: NoteType; content: string },
+): Promise<OfflineArticle> {
+  const article = await getArticleById(articleId)
+
+  if (!article) {
+    throw new Error('Article not found')
+  }
+
+  return saveArticleOffline({
+    ...article,
+    notes: article.notes.map((note) =>
+      note.id === noteId ? { ...note, type: patch.type, content: patch.content.trim() } : note,
+    ),
     syncStatus: 'PENDING_SYNC',
     updatedAt: Date.now(),
   })

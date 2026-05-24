@@ -1,13 +1,15 @@
 ---
-description: Load full Emerald Grove frontend project context
+description: Load project context and navigation before starting any task
 ---
 
-When the user wants to resume work on the Emerald Grove frontend, follow these steps:
+## При начале работы над любой задачей
 
-1. Read `diplom_frontend/ai_memory.md` to retrieve the UI/UX improvement plan, progress, and executive summary.
-2. Read `diplom_frontend/AI_NAVIGATION.md` to retrieve the project map, file locations, IndexedDB schema, and API endpoints.
-3. Summarize in 2-3 sentences:
-   - What is already done (recent completed tasks)
-   - Current project state and architecture
-   - What remains in the plan
-4. Ask the user which specific task they want to tackle next, or proceed if the intent is clear.
+1. Прочитай файл `C:\diplom\Emerald-Grove-Frontend\ai-memory.md` — это твоя память (состояние проекта, задачи, решения, API).
+
+2. Прочитай файл `C:\diplom\Emerald-Grove-Frontend\ai_navigation.md` — это навигация по проекту (структура файлов, таблица «задача → файл»).
+
+3. Используй информацию из этих файлов вместо Grep, find_by_name и code_search для базовой ориентации в проекте. Эти инструменты можно использовать только если нужной информации нет в файлах навигации/памяти.
+
+4. После завершения задачи — обнови `ai-memory.md` если произошли важные изменения (новые задачи, решения, выполненные пункты).
+
+5. После добавления/удаления/переименования файлов — обнови `ai_navigation.md`.

@@ -88,6 +88,12 @@ export async function authFetch(url: string, options: RequestInit): Promise<Resp
   return response
 }
 
+function normalizeTimestamp(value: number): number {
+  // Backend may return epoch seconds instead of milliseconds.
+  // Any value below 1e12 (~Sep 2001 in ms) is almost certainly seconds.
+  return value < 1e12 ? value * 1000 : value
+}
+
 export function toOfflineArticle(remoteArticle: RemoteArticle): OfflineArticle {
   const id = remoteArticle.externalId ?? `server-${remoteArticle.articleId}`
 
@@ -97,15 +103,19 @@ export function toOfflineArticle(remoteArticle: RemoteArticle): OfflineArticle {
     url: remoteArticle.url,
     description: remoteArticle.description ?? '',
     content: remoteArticle.content ?? undefined,
-    createdAt: remoteArticle.createdAt ?? Date.now(),
-    updatedAt: remoteArticle.updatedAt ?? remoteArticle.createdAt ?? Date.now(),
+    createdAt: remoteArticle.createdAt != null ? normalizeTimestamp(remoteArticle.createdAt) : Date.now(),
+    updatedAt: remoteArticle.updatedAt != null
+      ? normalizeTimestamp(remoteArticle.updatedAt)
+      : remoteArticle.createdAt != null
+        ? normalizeTimestamp(remoteArticle.createdAt)
+        : Date.now(),
     syncStatus: 'SYNCED',
     serverPersisted: true,
     notes: (remoteArticle.notes ?? []).map((note) => ({
       id: note.id,
       type: note.type,
       content: note.content,
-      createdAt: note.createdAt ?? Date.now(),
+      createdAt: note.createdAt != null ? normalizeTimestamp(note.createdAt) : Date.now(),
     })),
     isFavorite: remoteArticle.isFavorite ?? false,
     isReadLater: remoteArticle.isReadLater ?? false,
@@ -242,6 +252,27 @@ export async function fetchArticleAI(articleId: string): Promise<{ status: AISta
 
   const data = (await response.json()) as { aiStatus: AIStatus; aiResult?: AIResult }
   return { status: data.aiStatus, result: data.aiResult }
+}
+
+export async function updateNoteOnServer(
+  articleExternalId: string,
+  noteId: string,
+  data: { type: string; content: string },
+): Promise<void> {
+  const response = await authFetch(
+    `${API_BASE_URL}/api/articles/${encodeURIComponent(articleExternalId)}/notes/${encodeURIComponent(noteId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    },
+  )
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiAuthError('Сервер отклонил запрос. Войдите снова.', response.status)
+    }
+    throw new Error(`Update note failed with status ${response.status}`)
+  }
 }
 
 export async function fetchArticlesFromServer(): Promise<OfflineArticle[]> {
