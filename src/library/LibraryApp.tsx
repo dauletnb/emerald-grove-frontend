@@ -7,6 +7,7 @@ import {
   addArticleToCollectionOnServer,
   createCollectionOnServer,
   deleteCollectionOnServer,
+  renameCollectionOnServer,
   fetchCollectionsSnapshotFromServer,
   removeArticleFromCollectionOnServer,
   syncDeletedCollectionLinksToServer,
@@ -33,12 +34,14 @@ import {
   getPendingCollectionLinksForSync,
   getPendingCollectionsForSync,
   removeArticleFromCollection,
+  renameCollection,
   replaceCollectionsState,
   saveCollectionOffline,
   saveArticleOffline,
   saveArticlesOffline,
   setArticleFavorite,
   setArticleReadLater,
+  updateArticleNote,
   type OfflineArticle,
 } from '../shared/repository/db'
 import {
@@ -49,6 +52,7 @@ import {
   retryArticleAI,
   syncArticleToServer,
   syncDeletedArticlesToServer,
+  updateNoteOnServer,
   type BatchSyncResponse,
 } from '../shared/api/articles'
 import type { AIResult, AIStatus } from '../shared/types'
@@ -93,8 +97,23 @@ function getNoteTypeMeta(type: NoteType) {
   return noteTypeOptions.find((option) => option.value === type) ?? noteTypeOptions[0]
 }
 
+function normalizeTimestamp(value: number): number {
+  // Backend may return epoch seconds instead of milliseconds.
+  // Any value below 1e12 (~Sep 2001 in ms) is almost certainly seconds.
+  return value < 1e12 ? value * 1000 : value
+}
+
 function formatDate(value: number) {
-  return new Date(value).toLocaleString()
+  return new Date(normalizeTimestamp(value)).toLocaleString('ru-RU', {
+    timeZone: 'Asia/Almaty',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
 }
 
 function getNoteCounts(notes: ArticleNote[]) {
@@ -267,6 +286,9 @@ export function LibraryApp() {
   const [showCreateInput, setShowCreateInput] = useState(false)
   const [aiCache, setAiCache] = useState<Record<string, { status: AIStatus; result?: AIResult }>>({})
   const [authMessage, setAuthMessage] = useState('')
+  const [editingNote, setEditingNote] = useState<{ noteId: string; type: NoteType; content: string; saving: boolean } | null>(null)
+  const [renamingCollectionId, setRenamingCollectionId] = useState<string | null>(null)
+  const [renamingCollectionName, setRenamingCollectionName] = useState('')
   const aiInitiated = useRef<Set<string>>(new Set())
   const collectionsSyncRef = useRef<Promise<void> | null>(null)
 
@@ -624,6 +646,27 @@ export function LibraryApp() {
     }
   }
 
+  async function handleUpdateNote(articleId: string, noteId: string) {
+    if (!editingNote || editingNote.noteId !== noteId) return
+    const content = editingNote.content.trim()
+    if (!content) return
+
+    setEditingNote((prev) => prev ? { ...prev, saving: true } : null)
+
+    try {
+      await updateArticleNote(articleId, noteId, { type: editingNote.type, content })
+      await updateNoteOnServer(articleId, noteId, { type: editingNote.type, content })
+      setAuthMessage('')
+      setEditingNote(null)
+      await refreshLibraryState()
+    } catch (error) {
+      updateAuthMessage(error, '')
+      setEditingNote((prev) => prev ? { ...prev, saving: false } : null)
+      console.error('Failed to update note', error)
+      await refreshLibraryState()
+    }
+  }
+
   async function handleToggleArticleInCollection(articleId: string, collectionId: string) {
     const isIn = (collectionArticleIds[collectionId] ?? []).includes(articleId)
     try {
@@ -743,6 +786,35 @@ export function LibraryApp() {
     }
   }
 
+  async function handleRenameCollection(collectionId: string) {
+    const name = renamingCollectionName.trim()
+
+    if (!name) {
+      setRenamingCollectionId(null)
+      setRenamingCollectionName('')
+      return
+    }
+
+    try {
+      const serverCollection = await renameCollectionOnServer(collectionId, name)
+      await saveCollectionOffline(serverCollection)
+      setCollectionError('')
+      setAuthMessage('')
+    } catch (error) {
+      if (!updateAuthMessage(error, '')) {
+        try {
+          await renameCollection(collectionId, name)
+          setCollectionError('Переименовано локально. Синхронизируется при подключении к серверу.')
+        } catch (localError) {
+          setCollectionError(localError instanceof Error ? localError.message : 'Не удалось переименовать раздел.')
+        }
+      }
+    }
+
+    setRenamingCollectionId(null)
+    setRenamingCollectionName('')
+    await refreshCollections()
+  }
 
   const systemSectionCounts = useMemo(
     () => ({
@@ -840,30 +912,64 @@ export function LibraryApp() {
                               : 'border-slate-200 bg-white hover:border-slate-300'
                           }`}
                         >
-                          <button
-                            onClick={() => setSelectedSection({ type: 'collection', id: collection.id })}
-                            className="flex-1 text-left"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="truncate text-sm font-semibold text-slate-900">{collection.name}</span>
-                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-                                {(collectionArticleIds[collection.id] ?? []).length}
-                              </span>
-                            </div>
-                          </button>
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              void handleDeleteCollection(collection.id)
-                            }}
-                            className="rounded-full p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
-                            title="Удалить раздел"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
-                          </button>
+                          {renamingCollectionId === collection.id ? (
+                            <input
+                              type="text"
+                              value={renamingCollectionName}
+                              onChange={(event) => setRenamingCollectionName(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') void handleRenameCollection(collection.id)
+                                if (event.key === 'Escape') {
+                                  setRenamingCollectionId(null)
+                                  setRenamingCollectionName('')
+                                }
+                              }}
+                              onBlur={() => void handleRenameCollection(collection.id)}
+                              autoFocus
+                              className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 outline-none focus:border-emerald-400"
+                            />
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => setSelectedSection({ type: 'collection', id: collection.id })}
+                                className="flex-1 text-left"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="truncate text-sm font-semibold text-slate-900">{collection.name}</span>
+                                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                                    {(collectionArticleIds[collection.id] ?? []).length}
+                                  </span>
+                                </div>
+                              </button>
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setRenamingCollectionId(collection.id)
+                                  setRenamingCollectionName(collection.name)
+                                }}
+                                className="rounded-full p-1.5 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600"
+                                title="Переименовать раздел"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void handleDeleteCollection(collection.id)
+                                }}
+                                className="rounded-full p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+                                title="Удалить раздел"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                              </button>
+                            </>
+                          )}
                         </div>
                       ))
                     )}
@@ -1203,25 +1309,88 @@ export function LibraryApp() {
                       <div className="space-y-3">
                         {selectedNotes.map((note) => (
                           <article key={note.id} className="group rounded-[24px] border border-slate-100 bg-slate-50 p-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div className="flex flex-wrap items-center gap-3">
-                                <NoteBadge type={note.type} />
-                                <span className="text-xs text-slate-500">{formatDate(note.createdAt)}</span>
+                            {editingNote?.noteId === note.id ? (
+                              <div className="space-y-3">
+                                <div className="flex flex-wrap gap-2">
+                                  {noteTypeOptions.map((option) => (
+                                    <button
+                                      key={option.value}
+                                      onClick={() => setEditingNote((prev) => prev ? { ...prev, type: option.value } : null)}
+                                      className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                                        editingNote.type === option.value
+                                          ? 'bg-emerald-400 text-slate-950'
+                                          : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950'
+                                      }`}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  ))}
+                                </div>
+                                <textarea
+                                  value={editingNote.content}
+                                  onChange={(event) => setEditingNote((prev) => prev ? { ...prev, content: event.target.value } : null)}
+                                  rows={3}
+                                  maxLength={NOTE_CONTENT_MAX_LENGTH}
+                                  className="min-h-20 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-400"
+                                />
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-xs text-slate-400">{editingNote.content.length}/{NOTE_CONTENT_MAX_LENGTH}</p>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => setEditingNote(null)}
+                                      className="rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300"
+                                    >
+                                      Отмена
+                                    </button>
+                                    <button
+                                      onClick={() => void handleUpdateNote(selectedArticle.id, note.id)}
+                                      disabled={editingNote.saving || !editingNote.content.trim()}
+                                      className={`rounded-2xl px-3 py-1.5 text-xs font-semibold transition ${
+                                        editingNote.saving
+                                          ? 'cursor-wait bg-slate-600 text-slate-200'
+                                          : 'bg-emerald-400 text-slate-950 hover:bg-emerald-300'
+                                      }`}
+                                    >
+                                      {editingNote.saving ? 'Сохранение...' : 'Сохранить'}
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
-                              <button
-                                onClick={() => void handleDeleteNote(selectedArticle.id, note.id)}
-                                className="rounded-full p-1.5 text-slate-500 opacity-0 transition hover:bg-rose-400/10 hover:text-rose-400 group-hover:opacity-100"
-                                title="Удалить заметку"
-                              >
-                                <TrashIcon className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
+                            ) : (
+                              <>
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <NoteBadge type={note.type} />
+                                    <span className="text-xs text-slate-500">{formatDate(note.createdAt)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                                    <button
+                                      onClick={() => setEditingNote({ noteId: note.id, type: note.type, content: note.content, saving: false })}
+                                      className="rounded-full p-1.5 text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-600"
+                                      title="Редактировать заметку"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={() => void handleDeleteNote(selectedArticle.id, note.id)}
+                                      className="rounded-full p-1.5 text-slate-500 transition hover:bg-rose-400/10 hover:text-rose-400"
+                                      title="Удалить заметку"
+                                    >
+                                      <TrashIcon className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
 
-                            <SafeNoteRenderer
-                              as="p"
-                              content={note.content}
-                              className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-950"
-                            />
+                                <SafeNoteRenderer
+                                  as="p"
+                                  content={note.content}
+                                  className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-950"
+                                />
+                              </>
+                            )}
                           </article>
                         ))}
                       </div>
