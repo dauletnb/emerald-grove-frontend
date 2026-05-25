@@ -575,6 +575,10 @@ export function LibraryApp() {
     aiInitiated.current.add(articleId)
     aiPollingArticleId.current = articleId
 
+    const currentStatus = aiCache[articleId]?.status
+    if (currentStatus === 'FAILED' || currentStatus === 'PERMANENT_FAILED') {
+      retryArticleAI(articleId).catch((err) => updateAuthMessage(err, ''))
+    }
     setAiCache((prev) => ({ ...prev, [articleId]: { status: 'PENDING' } }))
     startAiPolling(articleId)
   }
@@ -1177,15 +1181,8 @@ export function LibraryApp() {
                             status={aiCache[selectedArticle.id].status}
                             result={aiCache[selectedArticle.id].result}
                             onRetry={() => {
-                              const id = selectedArticle.id
-                              aiInitiated.current.delete(id)
-                              setAiCache((prev) => ({ ...prev, [id]: { status: 'PENDING' } }))
-                              retryArticleAI(id)
-                                .then(() => loadAiForArticle(id))
-                                .catch((err) => {
-                                  updateAuthMessage(err, '')
-                                  setAiCache((prev) => ({ ...prev, [id]: { status: 'FAILED' } }))
-                                })
+                              aiInitiated.current.delete(selectedArticle.id)
+                              loadAiForArticle(selectedArticle.id)
                             }}
                           />
                         </div>
