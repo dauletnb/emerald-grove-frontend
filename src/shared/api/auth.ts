@@ -13,6 +13,7 @@
 
 import { API_BASE_URL } from '@/config'
 import { clearAuthSession, getAuthSession, setAuthSession, type AuthSession } from '../auth/authSession'
+import { clearAllLocalData } from '../repository/db'
 
 export class ApiAuthError extends Error {
   readonly status: number
@@ -61,6 +62,7 @@ export async function loginUser(email: string, password: string): Promise<AuthSe
     refreshToken: data.refreshToken,
     user: data.user,
   }
+  await clearAllLocalData()
   await setAuthSession(session)
   return session
 }
@@ -84,6 +86,7 @@ export async function registerUser(email: string, password: string, displayName?
     refreshToken: data.refreshToken,
     user: data.user,
   }
+  await clearAllLocalData()
   await setAuthSession(session)
   return session
 }
@@ -100,6 +103,7 @@ export async function logoutUser(): Promise<void> {
       // Ignore server errors on logout — local session is cleared regardless
     })
   }
+  await clearAllLocalData()
   await clearAuthSession()
 }
 

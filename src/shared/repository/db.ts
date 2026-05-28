@@ -609,3 +609,27 @@ export async function getArticleCollectionIds(articleId: string): Promise<string
 
   return links.map((link) => link.collectionId)
 }
+
+export async function clearAllLocalData(): Promise<void> {
+  const db = await dbPromise
+  const tx = db.transaction(
+    [
+      'articles',
+      'collections',
+      'articleCollectionLinks',
+      'deletedArticles',
+      'deletedCollections',
+      'deletedArticleCollectionLinks',
+    ],
+    'readwrite',
+  )
+  await Promise.all([
+    tx.objectStore('articles').clear(),
+    tx.objectStore('collections').clear(),
+    tx.objectStore('articleCollectionLinks').clear(),
+    tx.objectStore('deletedArticles').clear(),
+    tx.objectStore('deletedCollections').clear(),
+    tx.objectStore('deletedArticleCollectionLinks').clear(),
+  ])
+  await tx.done
+}
