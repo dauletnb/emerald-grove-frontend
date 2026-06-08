@@ -45,7 +45,7 @@ export function PopupApp() {
 
   return (
     <div className="w-80 border border-gray-100 bg-white p-4 text-sm font-sans shadow-lg">
-      <h1 className="mb-4 text-xl font-bold text-green-800">Emerald Groove</h1>
+      <h1 className="mb-4 text-xl font-bold text-green-800">Цифровая библиотека</h1>
 
       {user ? (
         <AuthenticatedView user={user} onLogout={handleLogout} />
@@ -209,7 +209,7 @@ function AuthenticatedView({ user, onLogout }: { user: AuthUser; onLogout: () =>
 
       <button
         disabled={loading}
-        onClick={() => void saveArticle()}
+        onClick={() => void saveArticle()} // сохранение статьи
         className={`flex w-full items-center justify-center gap-2 rounded py-2 font-medium text-white shadow-sm transition-colors ${
           loading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'
         }`}

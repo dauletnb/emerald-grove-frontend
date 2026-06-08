@@ -13,7 +13,7 @@ export interface AIResult {
   }[]
 }
 
-export type AIStatus = 'PENDING' | 'DONE' | 'FAILED'
+export type AIStatus = 'PENDING' | 'DONE' | 'FAILED' | 'PERMANENT_FAILED'
 
 export type SystemSection = 'ALL' | 'RECENT' | 'FAVORITES' | 'READ_LATER'
 

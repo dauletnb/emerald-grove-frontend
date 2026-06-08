@@ -840,7 +840,7 @@ export function LibraryApp() {
         <div className="flex flex-col gap-3 rounded-[28px] border border-white/70 bg-white/75 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-sm font-semibold uppercase tracking-[0.24em] text-white">
-              EG
+              ЦБ
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Цифровая библиотека</p>
